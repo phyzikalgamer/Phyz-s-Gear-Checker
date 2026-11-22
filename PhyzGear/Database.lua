@@ -1,0 +1,3 @@
+-- Replaced only by the validated offline import tool. No unverified seed items.
+local _, G = ...
+G.DatabaseStatus = "No approved offline database bundled; using in-game source observations."

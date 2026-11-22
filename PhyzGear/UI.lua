@@ -7,8 +7,10 @@ local CENTER_WIDTH = RIGHT_X - CENTER_X - 4
 local function RaceBackground(parent)
     local scenery = CreateFrame("Frame",nil,parent)
     scenery:SetFrameLevel(parent:GetFrameLevel()+1)
-    scenery:SetPoint("TOPLEFT",7,-58)
-    scenery:SetPoint("BOTTOMRIGHT",-7,28)
+    -- Keep every background layer inside the metal border, including 3D renders.
+    scenery:SetPoint("TOPLEFT",10,-26)
+    scenery:SetPoint("BOTTOMRIGHT",-10,10)
+    scenery:SetClipsChildren(true)
     local _, race = UnitRace("player")
     local themes = {Human="Human",Orc="Orc",Dwarf="Dwarf",NightElf="NightElf",
         Scourge="Scourge",Tauren="Tauren",Gnome="Gnome",Troll="Troll",
@@ -35,6 +37,39 @@ local function RaceBackground(parent)
     end)
     -- Apply immediately as the initial layout may already have resolved.
     scenery:GetScript("OnSizeChanged")(scenery,scenery:GetWidth(),scenery:GetHeight())
+    local models = {Human="Human",Orc="Orc",Dwarf="Dwarf",Gnome="Dwarf",
+        NightElf="NightElf",Scourge="Scourge",Tauren="Tauren",Troll="Orc",
+        BloodElf="BloodElf",Draenei="Draenei"}
+    local modelRace = models[race]
+    if modelRace then
+        local scene = CreateFrame("Model",nil,scenery)
+        scene:SetAllPoints(scenery)
+        scene:SetFrameLevel(scenery:GetFrameLevel()+1)
+        scene:EnableMouse(false)
+        scene:Hide()
+        local loaded = false
+        -- SetModel can succeed before the asset has finished loading. Only replace
+        -- the fallback after the engine confirms the scene is ready.
+        scene:SetScript("OnModelLoaded",function(self)
+            loaded = true
+            self:SetCamera(0)
+            self:SetSequence(0)
+            self:Show()
+        end)
+        local path = "Interface\\Glues\\Models\\UI_" .. modelRace .. "\\UI_" .. modelRace .. ".m2"
+        local ok = pcall(scene.SetModel,scene,path)
+        if not ok and not loaded then scene:Hide() end
+        scenery.creationScene = scene
+    end
+    -- Darken the summary strip without covering the frame's title or edges.
+    local strip = CreateFrame("Frame",nil,scenery)
+    strip:SetFrameLevel(parent:GetFrameLevel()+3)
+    strip:SetPoint("TOPLEFT")
+    strip:SetPoint("TOPRIGHT")
+    strip:SetHeight(32)
+    local shade = strip:CreateTexture(nil,"BACKGROUND")
+    shade:SetAllPoints()
+    shade:SetColorTexture(0,0,0,0.8)
     return scenery
 end
 local function Text(parent, font, x, y, width)
@@ -56,46 +91,11 @@ local function Money(value)
 end
 local function Details(slot)
     selected = slot
-    local gear = G.Equipment()[slot]
-    detail:Show()
-    detail.title:SetText(gear.label .. " — options")
-    detail.sourceURL = G.ResearchURL(slot, gear.link)
-    detail.sourceLabel:SetText("Default research source: Wowhead Forever")
-    local lines = {gear.item and gear.item.link or gear.label, gear.reason, "",
-        "Wowhead Forever", "Use Source link below for this item; use Database for the full Forever catalogue.",
-        "The offline Wowhead catalogue is not populated yet. Website results are not fetched in-game.", "",
-        "Alternatives", "Compare stats and requirements before buying. Higher item level does not guarantee an upgrade.", ""}
-    local candidates = G.Candidates(gear)
-    for _, candidate in ipairs(candidates) do
-        local item, source = candidate.item, candidate.source
-        lines[#lines+1] = item.link or item.name
-        lines[#lines+1] = ("Item level %s · Requires %s"):format(item.level or "?", item.required or "?")
-        lines[#lines+1] = source.kind .. " · " .. source.source
-        if source.url then lines[#lines+1] = "Source: " .. source.url end
-        if source.verified then lines[#lines+1] = "Data checked: " .. source.verified end
-        if source.profession then lines[#lines+1] = "Profession: " .. source.profession end
-        if source.location then lines[#lines+1] = source.location end
-        if source.kind ~= "Crafted" and source.kind ~= "Database" then lines[#lines+1] = Money(source.price) end
-        if source.quantity and source.quantity > 1 then lines[#lines+1] = "Price for stack of " .. source.quantity end
-        if source.extendedCost then lines[#lines+1] = "Additional currency or items required" end
-        if source.seen then
-            lines[#lines+1] = "Last seen: " .. date("%d %b %Y %H:%M", source.seen)
-        end
-        if source.kind == "Auction" then lines[#lines+1] = "Historical listing; availability and price may have changed." end
-        lines[#lines+1] = ""
-    end
-    if #candidates == 0 then
-        lines[#lines+1] = "No recorded alternatives for this slot."
-        lines[#lines+1] = "Visit equipment vendors to record their stock and locations."
-        lines[#lines+1] = "Open a profession or browse the auction house to collect more options."
-    end
-    detail.body:SetText(table.concat(lines, "\n"))
-    detail.content:SetHeight(math.max(480, detail.body:GetStringHeight()+20))
-    detail.scroll:SetVerticalScroll(0)
+    G.Options.Open(slot)
 end
 local function Card(parent, slot, x, y, width)
     local card = CreateFrame("Button", nil, parent)
-    card:SetFrameLevel(parent:GetFrameLevel()+3)
+    card:SetFrameLevel(parent:GetFrameLevel()+5)
     card:SetPoint("TOPLEFT", x, y)
     card:SetSize(width, 70)
     local bg = Panel(card)
@@ -135,18 +135,21 @@ local function Build()
     table.insert(UISpecialFrames,"PhyzGearWindow")
     local scale = math.min(1, UIParent:GetWidth()/(WINDOW_WIDTH+20), UIParent:GetHeight()/780)
     window:SetScale(scale)
-    window.summary = Text(window,"GameFontHighlight",18,-36,WINDOW_WIDTH-36)
     window.scenery = RaceBackground(window)
+    local summaryFrame = CreateFrame("Frame",nil,window)
+    summaryFrame:SetAllPoints(window)
+    summaryFrame:SetFrameLevel(window:GetFrameLevel()+5)
+    window.summary = Text(summaryFrame,"GameFontHighlight",18,-36,WINDOW_WIDTH-36)
     cards = {}
     for i,slot in ipairs(G.slots) do
         if i <= 8 then Card(window,slot,16,-66-(i-1)*73,CARD_WIDTH)
         elseif i <= 16 then Card(window,slot,RIGHT_X,-66-(i-9)*73,CARD_WIDTH)
-        else Card(window,slot,16+(i-17)*(WINDOW_WIDTH-32-CARD_WIDTH)/2,-660,CARD_WIDTH) end
+        else Card(window,slot,(WINDOW_WIDTH-CARD_WIDTH)/2,-66-(i-17)*73,CARD_WIDTH) end
     end
     local model = CreateFrame("PlayerModel",nil,window)
-    model:SetFrameLevel(window:GetFrameLevel()+2)
-    model:SetPoint("TOPLEFT",CENTER_X,-76)
-    model:SetSize(CENTER_WIDTH,550)
+    model:SetFrameLevel(window:GetFrameLevel()+4)
+    model:SetPoint("TOPLEFT",CENTER_X,-296)
+    model:SetSize(CENTER_WIDTH,410)
     model:SetUnit("player")
     model:SetPortraitZoom(0)
     model:SetFacing(0.25)
@@ -161,24 +164,31 @@ local function Build()
         end
     end)
     window.model = model
-    local hint = Text(model,"GameFontHighlightSmall",10,-549,CENTER_WIDTH-20)
+    local hint = Text(summaryFrame,"GameFontNormalSmall",CENTER_X,-718,CENTER_WIDTH)
+    hint:SetJustifyH("CENTER")
+    hint:SetTextColor(1,0.82,0)
     hint:SetText("Drag to rotate · Select a slot for options")
     detail = CreateFrame("Frame",nil,window,"BasicFrameTemplateWithInset")
-    detail:SetSize(340,650)
+    detail:EnableMouse(true)
+    detail:SetSize(440,680)
     detail:SetPoint("TOPRIGHT",window,"TOPRIGHT",-10,-56)
     detail:SetFrameLevel(window:GetFrameLevel()+20)
     detail.title = detail.TitleText
     detail.scroll = CreateFrame("ScrollFrame",nil,detail,"UIPanelScrollFrameTemplate")
+    detail.scroll:EnableMouse(true)
     detail.scroll:SetPoint("TOPLEFT",14,-34)
     detail.scroll:SetPoint("BOTTOMRIGHT",-32,78)
     detail.content = CreateFrame("Frame",nil,detail.scroll)
-    detail.content:SetSize(284,480)
+    detail.content:SetSize(388,480)
+    detail.content:EnableMouse(true)
     detail.scroll:SetScrollChild(detail.content)
-    detail.body = Text(detail.content,"GameFontHighlight",0,0,280)
+    detail.body = Text(detail.content,"GameFontHighlight",0,0,380)
     detail.body:SetSpacing(4)
-    detail.sourceLabel = Text(detail,"GameFontNormalSmall",14,-583,310)
+    detail.sourceLabel = Text(detail,"GameFontDisableSmall",14,0,408)
+    detail.sourceLabel:ClearAllPoints()
+    detail.sourceLabel:SetPoint("BOTTOMLEFT",14,66)
     local copy = CreateFrame("EditBox",nil,detail,"InputBoxTemplate")
-    copy:SetSize(304,24)
+    copy:SetSize(404,24)
     copy:SetPoint("BOTTOMLEFT",18,12)
     copy:SetAutoFocus(false)
     copy:SetScript("OnEscapePressed",function(self) self:ClearFocus() end)
@@ -194,9 +204,13 @@ local function Build()
             copy:HighlightText()
         end)
     end
-    SourceButton("Source link",14,105,function() return detail.sourceURL end)
-    SourceButton("Database",125,90,function() return G.Wowhead.url end)
-    SourceButton("Slot items",221,105,function() return G.ResearchURL(selected) end)
+    SourceButton("Item source",14,132,function() return detail.sourceURL end)
+    SourceButton("Guide source",152,132,function()
+        local guide=G.Presets.Selected()
+        return guide and guide.url or G.Wowhead.url
+    end)
+    SourceButton("Database",290,132,function() return G.Wowhead.url end)
+    G.Options.Init(detail)
     detail:Hide()
     detail:HookScript("OnHide",function() selected=nil; G.Refresh() end)
     window:SetScript("OnShow",function() model:SetUnit("player"); G.Refresh() end)
@@ -204,24 +218,34 @@ local function Build()
 end
 function G.Refresh()
     if not window or not window:IsShown() then return end
-    local review = 0
+    local review,upgrades,unrated = 0,0,0
     for id,gear in pairs(G.Equipment()) do
         local card = cards[id]
         local item = gear.item
+        gear.state,gear.reason = G.Advisor.Assess(gear)
         card.icon:SetTexture(item and item.icon or GetInventoryItemTexture("player",id) or "Interface\\PaperDoll\\UI-Backpack-EmptySlot")
         card.name:SetText(item and item.name or (gear.link and "Loading item…" or gear.label))
         local r,g,b = 1,0.82,0
         if item and item.quality then r,g,b = C_Item.GetItemQualityColor(item.quality) end
         card.name:SetTextColor(r,g,b)
         card.stats:SetText(item and G.Stats(id) or "")
-        local flag = gear.state == "Review"
-        if flag then review=review+1 end
+        local flag = gear.state == "Review" or gear.state == "Potential Upgrade"
+        if gear.state == "Review" then review=review+1 end
+        if gear.state == "Potential Upgrade" then upgrades=upgrades+1 end
+        if gear.state == "Unrated" or gear.state == "Loading" then unrated=unrated+1 end
         card.status:SetText(gear.state .. (item and (" · iLvl " .. (item.level or "?")) or "") .. " · Options >")
         card.status:SetTextColor(flag and 1 or 0.65,flag and 0.55 or 0.65,flag and 0.15 or 0.65)
         card.bg:SetBackdropBorderColor(selected == id and 1 or 0.45,selected == id and 0.82 or 0.45,0.3)
     end
-    window.summary:SetText(("%s · Level %s     |     %d slots to review     |     Level-based hints; compare actual stats"):format(
-        UnitName("player") or "Player",G.Safe(UnitLevel("player")) or "?",review))
+    window.summary:SetText(("%s · Level %s     |     %d potential upgrades · %d age/empty reviews · %d unrated"):format(
+        UnitName("player") or "Player",G.Safe(UnitLevel("player")) or "?",upgrades,review,unrated))
+    if detail and detail:IsShown() then G.Options.Render(false) end
+end
+local refreshQueued=false
+function G.QueueRefresh()
+    if refreshQueued then return end
+    refreshQueued=true
+    C_Timer.After(0.1,function() refreshQueued=false; G.Refresh() end)
 end
 function G.Toggle()
     if not window then Build() end

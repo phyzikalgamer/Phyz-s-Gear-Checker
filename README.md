@@ -1,21 +1,62 @@
-# Phyz's Gear Checker
+# Phyz's Gear Review — 0.2.0 preview
 
-A character-style gear review addon for World of Warcraft: Forever (Interface 16001).
+Gear overview and conservative upgrade research for WoW Forever, Interface 16001. The installed client was checked as 1.60.1.71037.
 
-## Install
+## Install and use
 
-Download **PhyzGear-0.1.0.zip** from [Releases](https://github.com/phyzikalgamer/Phyz-s-Gear-Checker/releases). Extract the `PhyzGear` folder into your Forever `Interface/AddOns` folder and fully restart WoW. Open with the chest-armor minimap icon, `/pgear`, or `/phyzgear`. Drag the minimap icon to move it.
+Copy `PhyzGear` into your Forever `Interface/AddOns` folder. Fully restart WoW after this update because the TOC adds modules. Open with `/pgear`, `/phyzgear`, or the draggable chest-armor minimap icon.
 
-## Features
+The approved layout is unchanged: top-aligned side equipment columns, three weapon cards at the top of the middle column, character beneath, centred yellow rotation hint, and clipped racial character-creation backdrop with dressing-room fallback. The frame is 1050 pixels wide; equipment cards are 272 pixels wide. Background and window assets come from Blizzard, not bundled art.
 
-- Compact gear cards on both sides of a rotatable character model, with weapon slots beneath.
-- Blizzard-style window and race-specific dressing-room backgrounds.
-- Level-based review flags and full equipped-item hover tooltips.
-- Slot options showing recorded vendor stock, profession recipe outputs, and observed auction buyouts with timestamps.
-- Visible [Wowhead Forever](https://www.wowhead.com/forever/database) research links and support for attributed offline catalogue providers.
+Select a slot to use the existing options overlay:
 
-## Preview limitations
+- Filter **All / Vendors / AH / Crafting / Quests / Dungeons / Raids**.
+- Choose **Best Upgrade** (weighted point gain) or **Easiest Upgrade** (observed accessibility first, then point gain).
+- Leave future items off to require current usability. Future items need verified class/proficiency metadata and show the level gap.
+- Choose a spec, then **Recommended / Attack / Survivability / Custom**. The 28 guide-informed presets use approximate sorting coefficients authored by Phyz, not numeric Wowhead weights. **Guide source** copies the corresponding Forever guide URL. See [preset methodology](PhyzGear/PRESETS.md).
+- **Edit weights** saves a personal Custom profile. Click an item to see stat changes and known acquisition sources; use Back to return.
+- Dungeon and raid lists show three by default, with Show more. Other lists show twenty by default.
+- Source buttons select URLs for Ctrl+C and pasting into a browser. No HTTP requests occur inside WoW.
 
-This first release has passed Lua syntax, manifest, Forever API-baseline, and ZIP checks but has not been tested in-game. Review flags are age hints, not stat-weight recommendations. No full Wowhead item catalogue is bundled: its equipment download returned HTTP 403. Vendor, crafting, and auction options are collected from observed data and need current-client verification. Auction listings can expire. Class proficiency and unique-equipped restrictions are not yet evaluated. Early Forever beta builds had SavedVariables persistence issues.
+## Intended builds and scoring
 
-See [addon documentation](PhyzGear/README.md) for details and the in-game verification checklist.
+No authoritative class weights are bundled. Select an intended spec and an estimated preset, or configure Custom; an unconfigured Custom build is Unrated. Presets leave capped Hit/Expertise/Defense unweighted and do not model talent/racial scaling. To keep distinct Custom profiles:
+
+```
+/pgear build My levelling build
+/pgear weights agility=1 stamina=0.3
+```
+
+Those numbers are an input-format example, not a recommended Hunter profile. Profiles are per character and named build. The editor lists supported stats; `/pgear help` shows commands. Missing weights mean zero contribution. Primary stats, attack/spell power, raw hit/crit/haste/defence ratings, mitigation stats, MP5 and client-reported weapon DPS can be weighted. No conversion to performance percentages is made.
+
+Score = sum(mapped client stat × selected weight). Only positive differences enter the ranked list. Two-hand candidates replace both equipped hands. One-hand swaps from a two-hander and off-hand swaps under a two-hander require a complete planned setup and are excluded. Rings/trinkets compare against the selected slot. Unique item/category conflicts are excluded conservatively. Set bonuses, procs and use/equip effects detected in item data are excluded from automatic ranking; detection cannot prove that every special mechanic has been found. Talent/racial conversions, caps, diminishing returns, weapon speed rotations and full gear-set optimisation are not modelled.
+
+**Potential Upgrade** means a positive difference under your chosen model. **Review** is an empty core slot or a required-level age concern without a verified comparison. **Unrated** means scoring or coverage is insufficient. Shirt/tabard are Optional; empty off-hand/ranged slots remain setup-dependent. The header counts upgrades, age/empty reviews and unrated slots separately. No result establishes best-in-slot or an optimal item.
+
+## Data and acquisition
+
+No full third-party equipment database is bundled. See [the audit and source research](PhyzGear/DEVELOPMENT.md). [Wowhead Forever](https://www.wowhead.com/forever/database) remains a visible research source. [ForeverDB](https://foreverdb.net/developers) is the recommended future approved feed; a developer key/export is not available in this build.
+
+- Visited vendor stock is recorded with vendor, map location/coordinates, recorded stack price, extra-cost flag and observation time. Coordinates are the player's position at the vendor. Requirements not reported by the client remain unknown.
+- Profession windows record recipe outputs and profession. Craftability is only stated for a learned personal recipe with a positive API craftable count when observed. Skill requirements, materials and recipe unlocks require verified provider records; no recipes from other professions are invented.
+- Item searches you initiate at the AH record buyout listings, quantities and observation times. This is a passive observer, not a scanner or buyer. Closing the AH clears session-only status. Recorded listings may already have sold.
+- Bind-on-Equip items can appear as potentially AH-obtainable without a listing. If installed, Auctionator's public read-only price/age API supplies cached unit prices and age in days. These do not establish current availability or an exact observation timestamp; random variants may use Auctionator fallback pricing.
+- Verified offline providers can supply vendors, crafting, quests, dungeon/raid loot, acquisition restrictions and provenance. Completed nonrepeatable quest sources are excluded when the completion API confirms them. Other prerequisite/choice/reputation restrictions are shown as supplied, not assumed satisfied. Drop rates require separate verification.
+
+Legacy `PhyzGearDB.sources` and minimap settings are retained. New profiles live in `PhyzGearDB.characters[realm:name]`. The kit documented an early beta persistence bug; test actual persistence after a clean logout/restart on the current client.
+
+## Offline database build
+
+The repository's `tools/gear/import_database.py` accepts a normalized JSON bundle with schema 1, exact Forever game name, provider name/URL, build, licence, verification date, independently established redistribution permission, and items. Each item needs ID/name, INVTYPE location, item/required levels, mapped stats, `foreverVerified=true`, verified restrictions, allowed class tokens and acquisition records. Each acquisition record needs a supported kind, source, HTTPS provenance URL, verification date and its own `foreverVerified=true`. Estimated/Classic-derived records, conflicts, duplicate IDs, nonfinite stats and unverified drop rates are rejected. It does not scrape arbitrary sites or ship keys.
+
+```
+python tools/gear/import_database.py verified-export.json PhyzGear/Database.lua
+```
+
+Generated Lua registers immutable offline records at load; slot indexes avoid full-database scans during redraw. Observed sources merge by item link, retaining random-enchantment variants. Importing a bare Wowhead research link does not establish acquisition evidence. Item data/candidate results are cached and invalidated on equipment, level, profile, item-load, talent, profession and acquisition changes. UI refreshes are coalesced.
+
+## Validation and remaining checks
+
+Run `python tools/gear/test_advisor.py` after installing Lupa in the local tools environment (or your Python environment). Tests use Lua 5.1 with mocked client APIs; fictional fixtures never ship in the addon. Tests cover filtering, scoring, weapons, rings, restrictions, source merging, stale prices, caching, async loading, importer validation and UI wiring. TOC validation and the kit's API-baseline scan are also required.
+
+This advisor implementation has not been tested in-game. Enable `/console scriptErrors 1`; exercise empty/loaded slots, build setup, all filters, item comparison/back, tooltip hover, future mode, vendor/recipe/AH collection, equipment changes, level changes and persistence. Check long text, small UI scales and BugSack. Previous screenshots establish that the overview and racial background work on the user's client, not that the new advisor does.

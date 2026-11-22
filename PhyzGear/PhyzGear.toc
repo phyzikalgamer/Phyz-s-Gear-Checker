@@ -2,9 +2,15 @@
 ## Title: Phyz's Gear Review
 ## Notes: Character-style equipment overview and evidence-based upgrade research.
 ## Author: Phyz
-## Version: 0.1.0
+## Version: 0.2.0
 ## SavedVariables: PhyzGearDB
 ## IconTexture: Interface\Icons\INV_Chest_Plate04
 
 Core.lua
+Data.lua
+Scoring.lua
+Presets.lua
+Advisor.lua
+Database.lua
+Options.lua
 UI.lua
