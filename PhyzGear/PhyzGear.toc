@@ -2,7 +2,7 @@
 ## Title: Phyz's Gear Review
 ## Notes: Character-style equipment overview and evidence-based upgrade research.
 ## Author: Phyz
-## Version: 0.3.0
+## Version: 0.3.1
 ## SavedVariables: PhyzGearDB
 ## IconTexture: Interface\Icons\INV_Chest_Plate04
 

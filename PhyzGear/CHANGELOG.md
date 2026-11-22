@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.1 preview
+
+- Dock the upgrades pane alongside the overview, with shared screen-fit scaling.
+- Frame the equipped item with its rarity-coloured name, a smaller equipped label and a divider below controls.
+- Show a dismissible notice only while catalogue scanning is active. Dismissal does not stop learning.
+- 61 mocked runtime/import tests pass. Live layout verification remains required.
+
 ## 0.3.0 preview
 
 - Independent item catalogue discovery using the installed Forever client's local item index, including uncommon gear.

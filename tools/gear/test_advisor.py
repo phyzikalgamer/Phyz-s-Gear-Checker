@@ -218,6 +218,18 @@ class RuntimeTests(unittest.TestCase):
           assert(PhyzGearDB.items["item:8"] and not PhyzGearDB.learning.queue[8])
         ''')
 
+    def test_scan_notice_only_while_scanning(self):
+        self.learner_fixture()
+        self.run_lua('''
+          G.Learner.SetActive(true); assert(G.Learner.IsScanning())
+          G.Learner.TogglePause(); assert(not G.Learner.IsScanning())
+          G.Learner.TogglePause(); state.combat=true; assert(not G.Learner.IsScanning())
+          state.combat=false; G.Learner.SetActive(false); assert(not G.Learner.IsScanning())
+          G.Learner.SetActive(true)
+          for i=1,8 do G.Learner.Tick() end
+          assert(not G.Learner.IsScanning())
+        ''')
+
     def test_stats_override_item_level(self):
         self.run_lua('local r=G.Advisor.Find(5); assert(#r.rows==1); assert(r.rows[1].item.id==2); assert(r.rows[1].comparison.delta==5)')
 
@@ -297,7 +309,7 @@ class RuntimeTests(unittest.TestCase):
         self.run_lua('for _,level in ipairs({1,10,35,60}) do state.level=level; G.InvalidateAdvisor("PLAYER_LEVEL_UP"); for _,slot in ipairs({1,5,11,12,16,17,18}) do local r=G.Advisor.Find(slot); for _,row in ipairs(r.rows) do assert(row.item.required<=level) end end end')
 
     def test_ui_open_filters_compare_and_minimap_smoke(self):
-        self.run_lua('G.Toggle(); G.Options.Open(5); assert(G.Options.panel.body:GetText():find("Equipped")); G.Options.inspected=G.Advisor.Find(5).rows[1]; G.Options.Render(true); assert(G.Options.panel.body:GetText():find("Estimated score")); G.Options.EditWeights(); G.CreateMinimap(); assert(G.minimapButton); G.Toggle()')
+        self.run_lua('G.Toggle(); G.Options.Open(5); assert(G.Options.equipped.text:GetText():find("Currently equipped")); assert(G.Options.equipped.name:GetText():find("|cff00ff00")); assert(G.Options.equipped:IsShown()); G.Options.inspected=G.Advisor.Find(5).rows[1]; G.Options.Render(true); assert(G.Options.panel.body:GetText():find("Estimated score")); G.Options.EditWeights(); G.CreateMinimap(); assert(G.minimapButton); G.Toggle()')
 
     def test_pane_captures_clicks(self):
         self.run_lua('G.Toggle(); G.Options.Open(5); assert(G.Options.panel.mouseEnabled==true); assert(G.Options.panel.scroll.mouseEnabled==true); assert(G.Options.panel.content.mouseEnabled==true); G.Options.EditWeights(); assert(G.Options.editor.mouseEnabled==true)')

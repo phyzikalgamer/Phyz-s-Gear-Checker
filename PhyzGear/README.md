@@ -1,4 +1,4 @@
-# Phyz's Gear Review — 0.3.0 preview
+# Phyz's Gear Review — 0.3.1 preview
 
 Gear overview and conservative upgrade research for WoW Forever, Interface 16001. The installed client was checked as 1.60.1.71037.
 
@@ -8,7 +8,9 @@ Copy `PhyzGear` into your Forever `Interface/AddOns` folder. Fully restart WoW a
 
 The approved layout is unchanged: top-aligned side equipment columns, three weapon cards at the top of the middle column, character beneath, centred yellow rotation hint, and clipped racial character-creation backdrop with dressing-room fallback. The frame is 1050 pixels wide; equipment cards are 272 pixels wide. Background and window assets come from Blizzard, not bundled art.
 
-Select a slot to use the existing options overlay:
+Select a slot to open the upgrades pane docked on the right. It follows the overview when dragged, and the combined layout scales to fit the screen. A framed item summary shows the rarity-coloured name and a small currently-equipped label. A gold divider separates controls from results.
+
+The pane provides:
 
 - Filter **All / Vendors / AH / Crafting / Quests / Dungeons / Raids**.
 - Choose **Best Upgrade** (weighted point gain) or **Easiest Upgrade** (observed accessibility first, then point gain).
@@ -40,6 +42,8 @@ No full third-party equipment database is bundled. See [the audit and source res
 The [coverage investigation](COVERAGE.md) explains the empty original pool and the repair. Equipped gear, bag items and inspected item tooltips populate a separate client-verified item pool. **All** can compare trusted items with unknown acquisition; source-specific filters still require suitable evidence. Items currently in your bags are labelled as owned.
 
 ### Independent client catalogue
+
+A dismissible notice appears only while scanning is active. It disappears when paused or finished. Dismissing hides the notice for the current login session without stopping the scan; the progress control remains available.
 
 While the overview is open, the addon incrementally checks IDs 1–400,000 against the installed client's item-existence and instant equipment metadata APIs. Only locally recognised weapons/armor with equipment slots are queued; shirt/tabard are excluded. Greens are included. This bounded scan is not a claim of complete Forever coverage. The index can contain hidden or unavailable items; successful item loading confirms client statistics, not obtainable loot.
 

@@ -29,6 +29,12 @@ function L.Status()
     return ("%s · %d learned · %d queued · index %.0f%%"):format(state,s.learned,Count(s.queue),math.min(100,(s.cursor-1)/L.limit*100))
 end
 function L.SetActive(active) L.active=active end
+function L.IsScanning()
+    local s=State()
+    return L.active and not s.paused and not (InCombatLockdown and InCombatLockdown())
+        and C_Item and C_Item.DoesItemExistByID~=nil and C_Item.GetItemInfoInstant~=nil
+        and C_Item.RequestLoadItemDataByID~=nil and (s.cursor<=L.limit or next(s.queue)~=nil)
+end
 function L.TogglePause()
     local s=State(); s.paused=not s.paused
 end

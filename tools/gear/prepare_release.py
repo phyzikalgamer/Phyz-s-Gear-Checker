@@ -4,7 +4,7 @@ import shutil
 import zipfile
 
 ROOT = Path(__file__).resolve().parents[2]
-VERSION = '0.3.0'
+VERSION = '0.3.1'
 repo = ROOT / 'tools/releases/gear-checker-repo'
 shutil.copytree(ROOT / 'PhyzGear', repo / 'PhyzGear', dirs_exist_ok=True)
 destination = repo / 'tools/gear'
@@ -24,17 +24,15 @@ Choose your spec and Recommended, Attack or Survivability, or edit Custom weight
 
 See [usage and limitations](PhyzGear/README.md), [changes](PhyzGear/CHANGELOG.md), and [coverage investigation](PhyzGear/COVERAGE.md). Preview: mocked tests and static checks passed; current item learning needs in-game validation.
 ''', encoding='utf-8')
-notes = '''Independent client catalogue preview.
+notes = '''Docked upgrade pane and scanning notice preview.
 
-- Discovers locally recognised equipment and learns full stats in controlled batches, including greens.
-- Saved progress, pause/resume, combat and closed-window pauses, timeouts and retry controls.
-- Shows learning progress and identifies the client as the stats source; Wowhead remains a research link.
-- Verified items can rank without known acquisition; vendor/crafting/AH information remains evidence-based.
-- Includes the themed full-name header/settings cog and single equipped tooltip fixes.
+- Upgrades pane attaches to the right of the overview; the combined window scales to fit.
+- Framed equipped-item summary uses rarity colour and a smaller equipped label, with a gold divider below controls.
+- Dismissible scanning notice appears only while learning is active. Dismissing it keeps scanning.
 
-Fully restart WoW after installing (new Lua modules). Open /pgear, choose a spec/preset and leave the overview open to learn. Click progress to pause/resume; /pgear scan status and /pgear scan retry are available. Suggestions appear progressively. Index completion is not proof of complete or obtainable loot coverage.
+Updating from 0.3.0: /reload is sufficient. Open /pgear and select a gear slot. Catalogue learning and saved progress are retained.
 
-Validated: 60 Lua 5.1 mocked runtime/import tests, TOC, Forever API baseline and archive structure. Not tested in-game; learning speed, live item responses and persistence need verification. No other addon's code or catalogue is bundled.
+Validated: 61 Lua 5.1 mocked runtime/import tests, TOC, Forever API baseline and archive structure. Not tested in-game; live layout still needs verification.
 '''
 (ROOT / f'tools/releases/gear-release-notes-{VERSION}.md').write_text(notes, encoding='utf-8')
 archive = ROOT / f'tools/releases/PhyzGear-{VERSION}.zip'

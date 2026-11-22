@@ -73,6 +73,24 @@ function O.Init(panel)
     panel.scroll:SetPoint("BOTTOMRIGHT",-32,82)
     panel.content:SetWidth(388)
     panel.body:SetWidth(380)
+    O.divider=panel:CreateTexture(nil,"ARTWORK")
+    O.divider:SetHeight(1)
+    O.divider:SetPoint("TOPLEFT",16,-140)
+    O.divider:SetPoint("TOPRIGHT",-16,-140)
+    O.divider:SetColorTexture(0.65,0.52,0.27,0.65)
+    O.equipped=CreateFrame("Frame",nil,panel,"BackdropTemplate")
+    O.equipped:SetPoint("TOPLEFT",14,-178)
+    O.equipped:SetPoint("TOPRIGHT",-28,-178)
+    O.equipped:SetHeight(68)
+    O.equipped:SetBackdrop({bgFile="Interface\\DialogFrame\\UI-DialogBox-Background",
+        edgeFile="Interface\\Tooltips\\UI-Tooltip-Border",tile=true,tileSize=16,edgeSize=12,
+        insets={left=3,right=3,top=3,bottom=3}})
+    O.equipped:SetBackdropColor(0.08,0.07,0.04,0.95)
+    O.equipped:SetBackdropBorderColor(0.65,0.52,0.27,1)
+    O.equipped.name=Text(O.equipped,"GameFontNormal",370)
+    O.equipped.name:SetPoint("TOPLEFT",10,-9)
+    O.equipped.text=Text(O.equipped,"GameFontHighlightSmall",370)
+    O.equipped.text:SetPoint("TOPLEFT",10,-37)
     local function Choose(owner,choices,current,selectValue)
         if MenuUtil and MenuUtil.CreateContextMenu then
             MenuUtil.CreateContextMenu(owner,function(_,root)
@@ -197,8 +215,12 @@ function O.Render(resetScroll)
     O.futureButton:SetShown(not O.settingsOnly)
     O.resultLabel:ClearAllPoints()
     O.resultLabel:SetPoint("TOPLEFT",16,O.settingsOnly and -92 or -145)
+    O.divider:ClearAllPoints()
+    O.divider:SetPoint("TOPLEFT",16,O.settingsOnly and -87 or -140)
+    O.divider:SetPoint("TOPRIGHT",-16,O.settingsOnly and -87 or -140)
+    O.equipped:SetShown(not O.settingsOnly)
     panel.scroll:ClearAllPoints()
-    panel.scroll:SetPoint("TOPLEFT",16,O.settingsOnly and -116 or -171)
+    panel.scroll:SetPoint("TOPLEFT",16,O.settingsOnly and -116 or -258)
     panel.scroll:SetPoint("BOTTOMRIGHT",-32,82)
     for mode,button in pairs(O.presetButtons) do
         if active==mode or mode~="Custom" and not guide then button:Disable() else button:Enable() end
@@ -229,8 +251,22 @@ function O.Render(resetScroll)
         return
     end
     local icon=item and item.icon and ("|T" .. item.icon .. ":24|t ") or ""
-    local lines={"|cffffd100Equipped|r  " .. icon .. (item and (item.name or item.link) or (gear.link and "Item loading" or "Empty " .. gear.label)),
+    local itemColor="|cffffd100"
+    if item and item.quality and C_Item and C_Item.GetItemQualityColor then
+        local r,g,b=C_Item.GetItemQualityColor(item.quality)
+        itemColor=("|cff%02x%02x%02x"):format(r*255,g*255,b*255)
+    end
+    O.equipped.name:SetText(icon .. itemColor .. (item and (item.name or item.link) or (gear.link and "Item loading" or "Empty " .. gear.label)) .. "|r")
+    local summary={gear.link and "|cffaaaaaaCurrently equipped|r" or "|cffaaaaaaEquipment slot|r",
         item and (("iLvl %s · Requires %s · %s"):format(item.level or "?",item.required or "?",state)) or state}
+    O.equipped.text:SetText(table.concat(summary,"\n"))
+    local nameHeight=math.max(24,O.equipped.name:GetStringHeight())
+    O.equipped.text:ClearAllPoints()
+    O.equipped.text:SetPoint("TOPLEFT",10,-14-nameHeight)
+    local summaryHeight=math.max(78,nameHeight+O.equipped.text:GetStringHeight()+23)
+    O.equipped:SetHeight(summaryHeight)
+    panel.scroll:SetPoint("TOPLEFT",16,-178-summaryHeight-12)
+    local lines={}
     if O.inspected then
         local row=O.inspected
         lines[#lines+1]="\n|cffffd100Candidate|r  " .. (row.item.name or row.item.link)
