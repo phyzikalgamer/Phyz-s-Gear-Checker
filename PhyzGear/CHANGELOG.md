@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.2 preview
+
+- Retain complete item-stat snapshots during catalogue item-load replies instead of clearing every item's cache.
+- Do not evict complete client snapshots when recording repeat observations; incomplete data remains retryable.
+- Keep equal-score/name results in a deterministic order and guard repeated docking layout calls.
+- Equipment, level and proficiency changes still invalidate comparisons. 63 mocked runtime/import tests pass; live scan verification is required.
+
 ## 0.3.1 preview
 
 - Dock the upgrades pane alongside the overview, with shared screen-fit scaling.

@@ -233,6 +233,34 @@ class RuntimeTests(unittest.TestCase):
     def test_stats_override_item_level(self):
         self.run_lua('local r=G.Advisor.Find(5); assert(#r.rows==1); assert(r.rows[1].item.id==2); assert(r.rows[1].comparison.delta==5)')
 
+    def test_scan_replies_do_not_drop_confirmed_upgrade_snapshots(self):
+        self.run_lua('''
+          local before=G.Advisor.Find(5)
+          assert(before.rows[1].comparison.delta==5)
+          state.items["item:2"].loading=true
+          for id=100,110 do
+            G.InvalidateAdvisor("GET_ITEM_INFO_RECEIVED",id)
+            assert(G.Advisor.Find(5).rows[1].comparison.delta==5)
+          end
+          -- Even a duplicate reply for a completely loaded item is harmless.
+          G.InvalidateAdvisor("GET_ITEM_INFO_RECEIVED",2)
+          assert(G.Advisor.Find(5).rows[1].comparison.delta==5)
+          -- Actual equipment changes still force a new comparison.
+          state.equipped[5]=fixture(9,"INVTYPE_CHEST",25)
+          state.items["item:2"].loading=false
+          G.InvalidateAdvisor("PLAYER_EQUIPMENT_CHANGED")
+          assert(#G.Advisor.Find(5).rows==0)
+        ''')
+
+    def test_observation_does_not_evict_complete_client_stats(self):
+        self.run_lua('''
+          G.Advisor.Find(5)
+          local original=G.Data.cache["item:2"]
+          assert(original)
+          G.Data.Observe("item:2","Inspected tooltip")
+          assert(G.Data.cache["item:2"]==original)
+        ''')
+
     def test_no_profile_no_recommendation(self):
         self.run_lua('G.Profile().weights={}; G.InvalidateAdvisor("PROFILE"); local r=G.Advisor.Find(5); assert(#r.rows==0 and r.reason:find("weights"))')
 

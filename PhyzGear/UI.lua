@@ -282,7 +282,10 @@ local function Build()
     SourceButton("Database",290,132,function() return G.Wowhead.url end)
     G.Options.Init(detail)
     detail:Hide()
+    local dockOpen=false
     local function LayoutDock(open)
+        if dockOpen==open then return end
+        dockOpen=open
         local width=WINDOW_WIDTH+(open and 444 or 0)
         window:SetScale(math.min(1,UIParent:GetWidth()/(width+20),UIParent:GetHeight()/780))
         window:ClearAllPoints()

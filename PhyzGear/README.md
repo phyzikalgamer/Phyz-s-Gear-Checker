@@ -1,4 +1,4 @@
-# Phyz's Gear Review — 0.3.1 preview
+# Phyz's Gear Review — 0.3.2 preview
 
 Gear overview and conservative upgrade research for WoW Forever, Interface 16001. The installed client was checked as 1.60.1.71037.
 

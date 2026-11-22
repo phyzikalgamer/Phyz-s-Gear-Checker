@@ -1,6 +1,15 @@
 local _, G = ...
 local D = {byLink={}, byLoc={}, cache={}, pending={}, observedPending={}, revision=0,entryCount=0,indexedCount=0}
 G.Data = D
+-- Item-load events are frequent during discovery. A complete immutable item
+-- snapshot must not be discarded because another item finished loading.
+function D.InvalidateItemID(id)
+    id=tonumber(id)
+    if not id then return end
+    for key,item in pairs(D.cache) do
+        if item.id==id and not (item.clientStatsKnown and item.tooltipKnown) then D.cache[key]=nil end
+    end
+end
 G.StatTokens = {
     strength="ITEM_MOD_STRENGTH_SHORT", agility="ITEM_MOD_AGILITY_SHORT",
     stamina="ITEM_MOD_STAMINA_SHORT", intellect="ITEM_MOD_INTELLECT_SHORT",
@@ -96,7 +105,7 @@ function D.Item(link)
     end
     item.verified=item.clientStatsKnown == true or offline and offline.foreverVerified == true or false
     -- Do not cache an offline fallback over a pending real item response.
-    if raw and tooltip then D.cache[key] = item end
+    if item.clientStatsKnown and item.tooltipKnown and item.usable~=nil then D.cache[key] = item end
     return item
 end
 local function Index(entry, item)
@@ -137,7 +146,9 @@ function D.Add(record)
         local sourceKey = table.concat({record.kind,record.source,record.url or "",record.realm or "",record.faction or ""},"|")
         entry.sources[sourceKey] = record
     end
-    D.cache[key] = nil
+    local cached=D.cache[key]
+    if not cached or not cached.clientStatsKnown or not cached.tooltipKnown
+        or record.metadata and record.metadata.origin~="client" then D.cache[key] = nil end
     local item = entry.metadata
     if not item and C_Item and C_Item.GetItemInfoInstant then
         local ok,_,_,_,loc = pcall(C_Item.GetItemInfoInstant,record.link)

@@ -12,14 +12,17 @@ local locations = {
     [17]={"INVTYPE_WEAPON","INVTYPE_WEAPONOFFHAND","INVTYPE_SHIELD","INVTYPE_HOLDABLE"},
     [18]={"INVTYPE_RANGED","INVTYPE_RANGEDRIGHT","INVTYPE_THROWN"},
 }
-function G.InvalidateAdvisor(event)
+function G.InvalidateAdvisor(event,itemID)
     A.cache = {}
     A.equipment = nil
-    if event == "GET_ITEM_INFO_RECEIVED" or event == "PLAYER_EQUIPMENT_CHANGED"
+    if event == "PLAYER_EQUIPMENT_CHANGED"
         or event == "TRAIT_CONFIG_UPDATED" or event == "SKILL_LINES_CHANGED" or event == "PLAYER_LEVEL_UP" then
         G.Data.cache = {}
     end
-    if event == "GET_ITEM_INFO_RECEIVED" then G.Data.ResolvePending() end
+    if event == "GET_ITEM_INFO_RECEIVED" then
+        G.Data.InvalidateItemID(itemID)
+        G.Data.ResolvePending()
+    end
     if event == "AUCTION_HOUSE_CLOSED" then G.currentAuctionObservations = {} end
     if event == "BAG_UPDATE_DELAYED" then G.sessionCrafts = {} end
 end
@@ -196,7 +199,8 @@ function A.Find(slot,filter,mode,future)
     table.sort(result.rows,function(a,b)
         if mode=="Easiest Upgrade" and a.ease~=b.ease then return a.ease<b.ease end
         if a.comparison.delta~=b.comparison.delta then return a.comparison.delta>b.comparison.delta end
-        return (a.item.name or "")<(b.item.name or "")
+        if (a.item.name or "")~=(b.item.name or "") then return (a.item.name or "")<(b.item.name or "") end
+        return (G.ItemKey(a.item.link) or "")<(G.ItemKey(b.item.link) or "")
     end)
     stats.final=#result.rows
     if #result.rows>0 then result.code=stats.sourceUnknown>0 and "UPGRADES_WITH_UNKNOWN_SOURCES" or "UPGRADES"; return result end
