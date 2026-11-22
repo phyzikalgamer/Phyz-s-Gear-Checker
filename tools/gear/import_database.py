@@ -51,13 +51,13 @@ def validate(bundle):
                 raise ValueError('Missing/invalid item ' + field)
         if not isinstance(item.get('stats'),dict) or any(k not in STATS or not number(v) for k,v in item['stats'].items()):
             raise ValueError('Invalid or unsupported stats')
-        if item.get('restrictionsVerified') is not True or not isinstance(item.get('allowedClasses'),dict):
-            raise ValueError('Equip restrictions must be verified')
-        if not item['allowedClasses'] or any(k not in CLASSES or v is not True for k,v in item['allowedClasses'].items()):
+        if 'allowedClasses' in item and (not isinstance(item['allowedClasses'],dict) or not item['allowedClasses'] or any(k not in CLASSES or v is not True for k,v in item['allowedClasses'].items())):
             raise ValueError('Invalid allowedClasses')
-        if not isinstance(item.get('sources'),list) or not item['sources']:
-            raise ValueError('Every item requires acquisition evidence')
-        for source in item['sources']:
+        if item.get('restrictionsVerified') is True and not item.get('allowedClasses'):
+            raise ValueError('Verified restrictions require an explicit allowedClasses map')
+        if 'sources' in item and not isinstance(item['sources'],list):
+            raise ValueError('sources must be a list when present')
+        for source in item.get('sources',[]):
             if not isinstance(source,dict) or source.get('kind') not in KINDS or not source.get('source'):
                 raise ValueError('Invalid acquisition category/source')
             if source.get('foreverVerified') is not True or not source.get('verified') or source.get('estimated'):

@@ -28,12 +28,13 @@ function S.Compare(slot, candidate, equipment, weights)
     end
     local candidateScore,reason = S.Score(candidate,weights)
     if not candidateScore then return nil,reason end
-    local currentScore,stats = 0,{}
+    local currentScore,stats,cautions = 0,{},{}
     for _,id in ipairs(replaced) do
         local gear = equipment[id]
         if gear and gear.link then
             if not gear.item then return nil,"Equipped item data still loading" end
             if gear.item.warnings and #gear.item.warnings > 0 then return nil,gear.item.warnings[1] end
+            for _,caution in ipairs(gear.item.cautions or {}) do cautions[#cautions+1]=caution end
             local score,why = S.Score(gear.item,weights)
             if not score then return nil,why end
             currentScore = currentScore + score
@@ -41,13 +42,14 @@ function S.Compare(slot, candidate, equipment, weights)
         end
     end
     if candidate.warnings and #candidate.warnings > 0 then return nil,candidate.warnings[1] end
+    for _,caution in ipairs(candidate.cautions or {}) do cautions[#cautions+1]=caution end
     local changes = {}
     for stat,value in pairs(candidate.stats) do changes[stat] = value-(stats[stat] or 0) end
     for stat,value in pairs(stats) do
         if candidate.stats[stat] == nil then changes[stat] = -value end
     end
     return {delta=candidateScore-currentScore,currentScore=currentScore,candidateScore=candidateScore,
-        changes=changes,replaced=replaced}
+        changes=changes,replaced=replaced,cautions=cautions}
 end
 function G.CharacterKey()
     return (GetRealmName() or "") .. ":" .. (UnitName("player") or "")

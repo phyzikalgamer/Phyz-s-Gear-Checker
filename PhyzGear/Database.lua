@@ -1,3 +1,3 @@
 -- Replaced only by the validated offline import tool. No unverified seed items.
 local _, G = ...
-G.DatabaseStatus = "No approved offline database bundled; using in-game source observations."
+G.DatabaseStatus = "Independent client catalogue: item statistics learned from the installed WoW Forever client; acquisition recorded separately."

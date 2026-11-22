@@ -1,4 +1,4 @@
-# Phyz's Gear Review — 0.2.0 preview
+# Phyz's Gear Review — 0.3.0 preview
 
 Gear overview and conservative upgrade research for WoW Forever, Interface 16001. The installed client was checked as 1.60.1.71037.
 
@@ -37,17 +37,27 @@ Score = sum(mapped client stat × selected weight). Only positive differences en
 
 No full third-party equipment database is bundled. See [the audit and source research](DEVELOPMENT.md). [Wowhead Forever](https://www.wowhead.com/forever/database) remains a visible research source. [ForeverDB](https://foreverdb.net/developers) is the recommended future approved feed; a developer key/export is not available in this build.
 
+The [coverage investigation](COVERAGE.md) explains the empty original pool and the repair. Equipped gear, bag items and inspected item tooltips populate a separate client-verified item pool. **All** can compare trusted items with unknown acquisition; source-specific filters still require suitable evidence. Items currently in your bags are labelled as owned.
+
+### Independent client catalogue
+
+While the overview is open, the addon incrementally checks IDs 1–400,000 against the installed client's item-existence and instant equipment metadata APIs. Only locally recognised weapons/armor with equipment slots are queued; shirt/tabard are excluded. Greens are included. This bounded scan is not a claim of complete Forever coverage. The index can contain hidden or unavailable items; successful item loading confirms client statistics, not obtainable loot.
+
+Full item requests are limited to two per 0.2-second tick (at most ten per second), with at most twenty outstanding. Cached records also enter the pool gradually. Requests time out after ten seconds and can be retried manually. Closing the window, clicking the progress text to pause, or entering combat stops new work. Progress, queued IDs, failures and learned snapshots persist account-wide on normal logout. A new client build restarts discovery and requeues prior observations. No other addon's code or item list is bundled.
+
+The small progress button beneath the character shows learned records, queued items and index position. **100% index** means the bounded range was checked, not that all gear exists or every source is known. `/pgear scan status`, `/pgear scan pause`, `/pgear scan resume` and `/pgear scan retry` provide controls; the window must remain open to learn. Stats are attributed to **Local WoW Forever client**; Wowhead remains a research link. Expect the initial learning pass to take time, with suggestions appearing progressively. Unavailable records never become scored upgrades solely because their IDs exist.
+
 - Visited vendor stock is recorded with vendor, map location/coordinates, recorded stack price, extra-cost flag and observation time. Coordinates are the player's position at the vendor. Requirements not reported by the client remain unknown.
 - Profession windows record recipe outputs and profession. Craftability is only stated for a learned personal recipe with a positive API craftable count when observed. Skill requirements, materials and recipe unlocks require verified provider records; no recipes from other professions are invented.
 - Item searches you initiate at the AH record buyout listings, quantities and observation times. This is a passive observer, not a scanner or buyer. Closing the AH clears session-only status. Recorded listings may already have sold.
 - Bind-on-Equip items can appear as potentially AH-obtainable without a listing. If installed, Auctionator's public read-only price/age API supplies cached unit prices and age in days. These do not establish current availability or an exact observation timestamp; random variants may use Auctionator fallback pricing.
 - Verified offline providers can supply vendors, crafting, quests, dungeon/raid loot, acquisition restrictions and provenance. Completed nonrepeatable quest sources are excluded when the completion API confirms them. Other prerequisite/choice/reputation restrictions are shown as supplied, not assumed satisfied. Drop rates require separate verification.
 
-Legacy `PhyzGearDB.sources` and minimap settings are retained. New profiles live in `PhyzGearDB.characters[realm:name]`. The kit documented an early beta persistence bug; test actual persistence after a clean logout/restart on the current client.
+Legacy `PhyzGearDB.sources` and minimap settings are retained. Profiles live in `PhyzGearDB.characters[realm:name]`, and client item snapshots live in `PhyzGearDB.items`. The kit documented an early beta persistence bug; test actual persistence after a clean logout/restart on the current client.
 
 ## Offline database build
 
-The repository's `tools/gear/import_database.py` accepts a normalized JSON bundle with schema 1, exact Forever game name, provider name/URL, build, licence, verification date, independently established redistribution permission, and items. Each item needs ID/name, INVTYPE location, item/required levels, mapped stats, `foreverVerified=true`, verified restrictions, allowed class tokens and acquisition records. Each acquisition record needs a supported kind, source, HTTPS provenance URL, verification date and its own `foreverVerified=true`. Estimated/Classic-derived records, conflicts, duplicate IDs, nonfinite stats and unverified drop rates are rejected. It does not scrape arbitrary sites or ship keys.
+The repository's `tools/gear/import_database.py` accepts a normalized JSON bundle with schema 1, exact Forever game name, provider name/URL, build, licence, verification date, independently established redistribution permission, and items. Each item needs ID/name, INVTYPE location, item/required levels, mapped stats and `foreverVerified=true`. Acquisition records may be absent or empty. Restriction metadata is optional for current-client checks; future recommendations still need verified restrictions. Any supplied acquisition record needs a supported kind, source, HTTPS provenance URL, verification date and its own `foreverVerified=true`. Estimated/Classic-derived records, conflicts, duplicate IDs, nonfinite stats and unverified drop rates are rejected. It does not scrape arbitrary sites or ship keys.
 
 ```
 python tools/gear/import_database.py verified-export.json PhyzGear/Database.lua

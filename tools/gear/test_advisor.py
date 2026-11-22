@@ -25,6 +25,9 @@ function GetCursorPosition() return 10,20 end
 function UnitRace() return "Orc","Orc" end
 function CanDualWield() return state.dualWield~=false end
 function time() return 100000 end
+function GetBuildInfo() return "1.60.1","71037",nil,16001 end
+function GetTime() return state.clock or 0 end
+function InCombatLockdown() return state.combat or false end
 date=os.date
 UISpecialFrames={}
 SlashCmdList={}
@@ -70,7 +73,7 @@ local function item(link) return state.items[link] end
 C_Item={
  GetItemInfo=function(link)
   local i=item(link); if not i or i.loading then return nil end
-  return i.name,link,2,i.level or 30,i.required or 20,"Armor","Leather",1,i.loc,1,0,i.classID or 4,1,2
+  return i.name,link,2,i.level or 30,i.required or 20,"Armor","Leather",1,i.loc,1,0,i.classID or 4,1,i.binding or 2
  end,
  GetItemStats=function(link) local i=item(link); return i and not i.noStats and i.stats or nil end,
  IsUsableItem=function(link) local i=item(link); return i and i.usable~=false and (i.required or 0)<=state.level and (not i.class or i.class==state.class) or false end,
@@ -100,7 +103,7 @@ class RuntimeTests(unittest.TestCase):
         self.lua.execute(MOCK)
         self.g=self.lua.table()
         self.lua.globals().G=self.g
-        for filename in ('Core.lua','Data.lua','Scoring.lua','Presets.lua','Advisor.lua','Database.lua','Options.lua','UI.lua'):
+        for filename in ('Core.lua','Data.lua','Scoring.lua','Presets.lua','Advisor.lua','Database.lua','Diagnostics.lua','Learner.lua','Options.lua','UI.lua'):
             source=(ROOT/'PhyzGear'/filename).read_text(encoding='utf-8')
             self.lua.execute('return function(...)\n'+source+'\nend')('PhyzGear',self.g)
         self.lua.execute('''
@@ -111,6 +114,109 @@ class RuntimeTests(unittest.TestCase):
         ''')
 
     def run_lua(self,source): self.lua.execute(source)
+
+    def learner_fixture(self):
+        self.run_lua('''
+          state.requests={}
+          C_Item.DoesItemExistByID=function(id) return state.items["item:"..id]~=nil end
+          C_Item.GetItemInfoInstant=function(id)
+            local i=state.items["item:"..id]; if i then return id,"Armor","Leather",i.loc,1,i.classID or 4,1 end
+          end
+          C_Item.RequestLoadItemDataByID=function(id) state.requests[#state.requests+1]=id end
+          G.Learner.limit=12
+        ''')
+
+    def test_client_catalogue_discovers_green_items_without_sources(self):
+        self.learner_fixture()
+        self.run_lua('''
+          fixture(8,"INVTYPE_CHEST",25)
+          state.items["item:8"].binding=1
+          G.Learner.SetActive(true)
+          for i=1,8 do G.Learner.Tick() end
+          assert(PhyzGearDB.items["item:8"].origin=="client")
+          local result=G.Advisor.Find(5,"All")
+          assert(result.rows[1].item.id==8 and result.rows[1].source.kind=="Unknown")
+          local vendors=G.Advisor.Find(5,"Vendors")
+          for _,row in ipairs(vendors.rows) do assert(row.item.id~=8,"Unknown acquisition leaked into Vendors") end
+          assert(PhyzGearDB.learning.cursor==13)
+        ''')
+
+    def test_learner_pauses_and_resumes_saved_queue(self):
+        self.learner_fixture()
+        self.run_lua('''
+          G.Learner.Tick(); assert(not PhyzGearDB.learning or PhyzGearDB.learning.cursor==1)
+          G.Learner.SetActive(true); state.combat=true
+          G.Learner.Tick(); assert(PhyzGearDB.learning.cursor==1)
+          state.combat=false; G.Learner.TogglePause()
+          G.Learner.Tick(); assert(PhyzGearDB.learning.cursor==1)
+          G.Learner.TogglePause(); G.Learner.Tick()
+          assert(PhyzGearDB.learning.cursor==13)
+          G.Learner.SetActive(false)
+          local learned=PhyzGearDB.learning.learned
+          G.Learner.Tick(); assert(PhyzGearDB.learning.learned==learned)
+        ''')
+
+    def test_learner_throttle_timeout_and_manual_retry(self):
+        self.learner_fixture()
+        self.run_lua('''
+          for id=1,12 do fixture(id,"INVTYPE_CHEST",id); state.items["item:"..id].loading=true end
+          G.Data.Initialize(); state.requests={}
+          G.Learner.SetActive(true); G.Learner.Tick()
+          assert(#state.requests==2)
+          G.Learner.Tick(); assert(#state.requests==4)
+          for i=1,8 do G.Learner.Tick() end
+          assert(#state.requests==12)
+          state.clock=11; G.Learner.Tick()
+          assert(next(G.Learner.pending)==nil)
+          assert(next(G.Data.observedPending)==nil)
+          assert(PhyzGearDB.learning.failed[8])
+          state.items["item:8"].loading=false
+          G.AdvisorCommand("scan retry")
+          for i=1,8 do G.Learner.Tick() end
+          assert(PhyzGearDB.items["item:8"])
+        ''')
+
+    def test_learner_build_change_requeues_observed_items(self):
+        self.learner_fixture()
+        self.run_lua('''
+          G.Data.Observe("item:1","Equipped")
+          G.Learner.Status()
+          PhyzGearDB.learning.cursor=13
+          GetBuildInfo=function() return "1.60.1","99999" end
+          G.Learner.Status()
+          assert(PhyzGearDB.learning.cursor==1 and PhyzGearDB.learning.queue[1])
+        ''')
+
+    def test_learner_filters_local_index_and_bounds_outstanding_requests(self):
+        self.learner_fixture()
+        self.run_lua('''
+          G.Data.Initialize(); state.requests={}
+          G.Learner.limit=100
+          for id=10,60 do fixture(id,"INVTYPE_CHEST",id); state.items["item:"..id].loading=true end
+          fixture(70,"",1); fixture(71,"INVTYPE_BODY",1)
+          fixture(72,"INVTYPE_CHEST",1); state.items["item:72"].classID=0
+          G.Learner.SetActive(true)
+          for i=1,50 do G.Learner.Tick() end
+          assert(#state.requests==20)
+          assert(not PhyzGearDB.learning.queue[70] and not PhyzGearDB.learning.queue[71] and not PhyzGearDB.learning.queue[72])
+        ''')
+
+    def test_learner_restart_resumes_persisted_requests(self):
+        self.learner_fixture()
+        self.run_lua('''
+          fixture(8,"INVTYPE_CHEST",25); state.items["item:8"].loading=true
+          G.Learner.SetActive(true)
+          for i=1,8 do G.Learner.Tick() end
+          assert(PhyzGearDB.learning.queue[8])
+        ''')
+        source=(ROOT/'PhyzGear/Learner.lua').read_text(encoding='utf-8')
+        self.lua.execute('return function(...)\n'+source+'\nend')('PhyzGear',self.g)
+        self.run_lua('''
+          G.Learner.limit=12; G.Learner.SetActive(true)
+          state.items["item:8"].loading=false
+          G.Learner.Tick()
+          assert(PhyzGearDB.items["item:8"] and not PhyzGearDB.learning.queue[8])
+        ''')
 
     def test_stats_override_item_level(self):
         self.run_lua('local r=G.Advisor.Find(5); assert(#r.rows==1); assert(r.rows[1].item.id==2); assert(r.rows[1].comparison.delta==5)')
@@ -125,7 +231,7 @@ class RuntimeTests(unittest.TestCase):
         self.run_lua('observe(fixture(4,"INVTYPE_CHEST",50,100,60)); local r=G.Advisor.Find(5,"All","Best Upgrade",true); assert(#r.rows==1); assert(r.skipped["Future proficiency requirements unknown"]==1)')
 
     def test_secret_stats_and_unknown_data(self):
-        self.run_lua('state.items["item:2"].noStats=true; G.Data.cache={}; local r=G.Advisor.Find(5); assert(#r.rows==0); assert(r.skipped["Item stats unavailable"]==1)')
+        self.run_lua('state.items["item:2"].noStats=true; G.Data.cache={}; local r=G.Advisor.Find(5); assert(#r.rows==0); assert(r.diagnostics.unavailableData==1)')
 
     def test_secret_numeric_stat_is_not_treated_as_zero(self):
         self.run_lua('state.items["item:2"].stats.ITEM_MOD_AGILITY_SHORT={secret=true}; G.Data.cache={}; assert(G.Data.Item("item:2").statsKnown==false); assert(#G.Advisor.Find(5).rows==0)')
@@ -195,6 +301,69 @@ class RuntimeTests(unittest.TestCase):
 
     def test_pane_captures_clicks(self):
         self.run_lua('G.Toggle(); G.Options.Open(5); assert(G.Options.panel.mouseEnabled==true); assert(G.Options.panel.scroll.mouseEnabled==true); assert(G.Options.panel.content.mouseEnabled==true); G.Options.EditWeights(); assert(G.Options.editor.mouseEnabled==true)')
+
+    def test_header_cog_opens_real_settings(self):
+        self.run_lua('G.Toggle(); assert(G.headerOptionsButton:IsShown()); G.headerOptionsButton:GetScript("OnClick")(); assert(G.Options.settingsOnly and G.Options.panel:IsShown()); assert(G.Options.panel.title:GetText()=="Gear Review options"); G.Options.Open(5); assert(not G.Options.settingsOnly)')
+
+    def test_equipped_tooltip_does_not_use_global_comparison_pair(self):
+        self.run_lua('local owner=CreateFrame(); G.ShowEquippedTooltip(owner,5); assert(G.equippedTooltip:IsShown()); assert(not GameTooltip:IsShown()); assert(G.equippedTooltip:GetScript("OnUpdate")==nil); assert(G.equippedTooltip~=GameTooltip)')
+
+    def test_source_less_verified_item_is_ranked_in_all_only(self):
+        self.run_lua('''
+          local link=fixture(4,"INVTYPE_CHEST",30); state.items[link].binding=1
+          G.Data.AddItem({id=4,name="Fixture 4",loc="INVTYPE_CHEST",required=20,level=30,
+            foreverVerified=true,stats={agility=30}},"Fixture verified provider")
+          local all=G.Advisor.Find(5); assert(all.rows[1].item.id==4 and all.rows[1].source.kind=="Unknown")
+          assert(all.code=="UPGRADES_WITH_UNKNOWN_SOURCES")
+          assert(#G.Advisor.Find(5,"Dungeons").rows==0)
+          assert(G.Advisor.Find(5,"Dungeons").code=="ACQUISITION_FILTERED")
+        ''')
+
+    def test_register_database_without_acquisition_records(self):
+        self.run_lua('''
+          local link=fixture(4,"INVTYPE_CHEST",30); state.items[link].binding=1
+          assert(G.RegisterDatabase({schema=1,game="World of Warcraft: Forever",build="test",license="Fixture",url="https://example.invalid",name="Fixture",
+            items={{id=4,name="Fixture 4",loc="INVTYPE_CHEST",required=20,level=30,foreverVerified=true,stats={agility=30},sources={}}}}))
+          assert(G.Data.byLoc.INVTYPE_CHEST[link]); assert(G.Advisor.Find(5).rows[1].item.id==4)
+        ''')
+
+    def test_client_bag_collection_yields_real_owned_source(self):
+        self.run_lua('''
+          local link=fixture(4,"INVTYPE_CHEST",30); state.items[link].binding=1
+          C_Container={GetContainerNumSlots=function(bag) return bag==0 and 1 or 0 end,
+            GetContainerItemLink=function() return link end}
+          G.CollectOwnedItems(); G.InvalidateAdvisor("OWNED_ITEMS")
+          assert(G.DB().items[link].origin=="client")
+          local row=G.Advisor.Find(5).rows[1]
+          assert(row.item.id==4 and row.source.kind=="Owned" and row.ease==0)
+          assert(#G.Advisor.Find(5,"Quests").rows==0)
+        ''')
+
+    def test_passive_stat_line_does_not_block_static_stat_comparison(self):
+        self.run_lua('''
+          C_TooltipInfo.GetHyperlink=function() return {lines={{type=45,leftText="Equip: +10 Attack Power"}}} end
+          state.items["item:2"].spell="Fixture passive stat"
+          local row=G.Advisor.Find(5).rows[1]
+          assert(row and #row.comparison.cautions>0)
+        ''')
+
+    def test_specific_empty_result_codes(self):
+        self.run_lua('''
+          assert(G.Advisor.Find(1).code=="NO_SLOT_RECORDS")
+          G.Data.byLink={}; G.Data.byLoc={}; G.Data.entryCount=0; G.Data.indexedCount=0; G.Data.initialized=true
+          G.InvalidateAdvisor("TEST"); assert(G.Advisor.Find(1).code=="DATABASE_NOT_LOADED")
+          G.Data.database={}; G.InvalidateAdvisor("TEST"); assert(G.Advisor.Find(1).code=="DATABASE_EMPTY")
+        ''')
+
+    def test_developer_diagnostics_are_explicit_and_quiet(self):
+        self.run_lua('''
+          local output={}; print=function(message) output[#output+1]=message end
+          assert(not G.debugEnabled); G.Advisor.Find(5); assert(#output==0)
+          G.AdvisorCommand("debug on"); assert(G.debugEnabled)
+          G.AdvisorCommand("debug report 5"); assert(#output==6)
+          G.AdvisorCommand("debug off"); assert(not G.debugEnabled)
+          local c=G.DatabaseCoverage(); assert(c.total>=2 and c.stats>=2)
+        ''')
 
     def test_presets_require_explicit_spec(self):
         self.run_lua('assert(not G.Presets.Choose("Recommended")); assert(not G.Presets.ChooseSpec("made-up")); assert(G.Presets.Selected()==nil); assert(G.Profile().weights.agility==1)')
@@ -348,6 +517,11 @@ class ImportTests(unittest.TestCase):
         lua=LuaRuntime()
         table=lua.execute('return '+generate(self.bundle).split('G.RegisterDatabase(',1)[1][:-2])
         self.assertEqual(table['items'][1]['name'],self.bundle['items'][0]['name'])
+
+    def test_verified_item_can_omit_acquisition_and_restriction_metadata(self):
+        item=self.bundle['items'][0]
+        item.pop('sources'); item.pop('restrictionsVerified'); item.pop('allowedClasses')
+        self.assertIs(validate(self.bundle),self.bundle)
 
     def test_rejects_classic_and_unknown_sources(self):
         for change in ('estimated','source','permission','duplicate','nan','conflict'):

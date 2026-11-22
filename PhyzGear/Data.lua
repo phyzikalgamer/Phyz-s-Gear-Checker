@@ -1,5 +1,5 @@
 local _, G = ...
-local D = {byLink={}, byLoc={}, cache={}, pending={}, revision=0}
+local D = {byLink={}, byLoc={}, cache={}, pending={}, observedPending={}, revision=0,entryCount=0,indexedCount=0}
 G.Data = D
 G.StatTokens = {
     strength="ITEM_MOD_STRENGTH_SHORT", agility="ITEM_MOD_AGILITY_SHORT",
@@ -47,6 +47,7 @@ function D.Item(link)
     local raw = SafeCall(C_Item and C_Item.GetItemStats,link)
     if type(raw) == "table" then
         item.statsKnown = true
+        item.clientStatsKnown = true
         for stat,token in pairs(G.StatTokens) do
             local value=raw[token]
             if issecretvalue and issecretvalue(value) then item.statsKnown=false
@@ -55,6 +56,7 @@ function D.Item(link)
                 else item.stats[stat] = value end
             elseif value~=nil then item.statsKnown=false end
         end
+        item.clientStatsKnown=item.statsKnown
     elseif offline and offline.stats then
         item.stats, item.statsKnown = offline.stats, true
     end
@@ -65,17 +67,20 @@ function D.Item(link)
     end
     item.unique = SafeCall(C_Item and C_Item.GetItemUniquenessByID,link)
     item.warnings = {}
+    item.cautions = {}
     local spell = SafeCall(C_Item and C_Item.GetItemSpell,link)
-    if spell then item.warnings[#item.warnings+1] = "Use/equip effect is not scored" end
     local tooltip = SafeCall(C_TooltipInfo and C_TooltipInfo.GetHyperlink,link)
     if tooltip and tooltip.lines then
         local types = Enum and Enum.TooltipDataLineType or {}
         for _,line in ipairs(tooltip.lines) do
             local kind = G.Safe(line.type)
             local text = G.Safe(line.leftText)
-            if kind and (kind == types.ItemSpellTriggerOnUse or kind == types.ItemSpellTriggerOnProc
-                or kind == types.ItemSpellTriggerOnEquip) then
+            if kind and (kind == types.ItemSpellTriggerOnUse or kind == types.ItemSpellTriggerOnProc) then
                 item.warnings[#item.warnings+1] = "Special effect is not scored"
+            end
+            if kind and kind==types.ItemSpellTriggerOnEquip then
+                item.passiveEquip=true
+                item.cautions[#item.cautions+1]="Stat-only comparison; passive effects may not be fully represented"
             end
             if type(text) == "string" and text:find("%(%d+/%d+%)") then
                 item.warnings[#item.warnings+1] = "Set interaction needs manual comparison"
@@ -83,20 +88,26 @@ function D.Item(link)
         end
         item.tooltipKnown = true
     end
+    if spell and not item.passiveEquip then item.warnings[#item.warnings+1] = "Use/equip effect is not scored" end
     if offline then
         item.allowedClasses = offline.allowedClasses
         item.restrictionsVerified = offline.restrictionsVerified
-        if offline.effects or offline.setID then item.warnings[#item.warnings+1] = "Offline effects/set bonus not scored" end
+        if not item.clientStatsKnown and (offline.effects or offline.setID) then item.warnings[#item.warnings+1] = "Offline effects/set bonus not scored" end
     end
+    item.verified=item.clientStatsKnown == true or offline and offline.foreverVerified == true or false
     -- Do not cache an offline fallback over a pending real item response.
     if raw and tooltip then D.cache[key] = item end
     return item
 end
 local function Index(entry, item)
-    if entry.indexed or not item or not item.loc then return end
+    if not item or not item.loc or item.loc=="" or entry.indexedLoc==item.loc then return end
+    if entry.indexedLoc then D.byLoc[entry.indexedLoc][entry.key]=nil
+    else D.indexedCount=D.indexedCount+1 end
     D.byLoc[item.loc] = D.byLoc[item.loc] or {}
     D.byLoc[item.loc][entry.key] = entry
     entry.indexed = true
+    entry.indexedLoc=item.loc
+    D.pending[entry.key]=nil
 end
 function D.Add(record)
     local key = G.ItemKey(record.link)
@@ -105,10 +116,12 @@ function D.Add(record)
     if not entry then
         entry = {key=key, link=record.link, sources={}}
         D.byLink[key] = entry
+        D.entryCount=D.entryCount+1
     end
+    if record.provider then entry.provider=record.provider end
     if record.metadata and record.metadata.foreverVerified == true then
         local previous=entry.metadata
-        if previous then
+        if previous and not (previous.origin=="client" and record.metadata.origin=="client") then
             local conflict=previous.loc~=record.metadata.loc or previous.required~=record.metadata.required
             for stat,value in pairs(previous.stats or {}) do
                 if (record.metadata.stats or {})[stat]~=value then conflict=true end
@@ -120,8 +133,10 @@ function D.Add(record)
         end
         entry.metadata = record.metadata
     end
-    local sourceKey = table.concat({record.kind or "Unknown",record.source or "Unknown",record.url or "",record.realm or "",record.faction or ""},"|")
-    entry.sources[sourceKey] = record
+    if record.kind and record.source then
+        local sourceKey = table.concat({record.kind,record.source,record.url or "",record.realm or "",record.faction or ""},"|")
+        entry.sources[sourceKey] = record
+    end
     D.cache[key] = nil
     local item = entry.metadata
     if not item and C_Item and C_Item.GetItemInfoInstant then
@@ -132,18 +147,95 @@ function D.Add(record)
     if item then Index(entry,item) else D.pending[key] = entry end
     D.revision = D.revision + 1
 end
+function D.AddItem(item,provider)
+    if type(item)~="table" or item.foreverVerified~=true or item.estimated or not item.id
+        or not item.loc or type(item.stats)~="table" then return false end
+    D.Add({link=item.link or ("item:"..item.id),metadata=item,provider=provider})
+    return true
+end
 function D.Initialize()
     if D.initialized then return end
     D.initialized = true
     -- Preserve legacy SavedVariables; build the search index once, not on redraw.
     for _,record in pairs(G.DB().sources) do D.Add(record) end
     for _,record in pairs(G.catalogue) do D.Add(record) end
+    for link,item in pairs(G.DB().items or {}) do
+        if type(item)=="table" and item.foreverVerified then
+            item.link=link
+            D.AddItem(item,"Local WoW Forever client")
+        end
+    end
 end
 function D.ResolvePending()
     for key,entry in pairs(D.pending) do
         local item = D.Item(entry.link)
         if item then Index(entry,item); D.pending[key]=nil end
     end
+    local retry={}
+    for key,location in pairs(D.observedPending) do retry[#retry+1]={key,location} end
+    for _,entry in ipairs(retry) do D.Observe(entry[1],entry[2]) end
+end
+function D.Observe(link,location)
+    local key=G.ItemKey(link)
+    if not key then return false end
+    local item=D.Item(link)
+    if item and (item.loc=="" or item.classID and item.classID~=2 and item.classID~=4) then
+        D.observedPending[key]=nil
+        return false
+    end
+    if not item or not item.clientStatsKnown or not item.loc or item.loc=="" then
+        D.observedPending[key]=location or "Known item"
+        return false
+    end
+    D.observedPending[key]=nil
+    local version,build
+    if GetBuildInfo then version,build=GetBuildInfo() end
+    local metadata={id=item.id,name=item.name,loc=item.loc,level=item.level,required=item.required,
+        quality=item.quality,icon=item.icon,classID=item.classID,subclassID=item.subclassID,binding=item.binding,
+        stats={},foreverVerified=true,origin="client",observed=time(),observedLocation=location,
+        build=version and (version .. "." .. tostring(build)) or "Current Forever client",
+        effects=#item.warnings>0 and true or nil}
+    for stat,value in pairs(item.stats) do metadata.stats[stat]=value end
+    G.DB().items=G.DB().items or {}
+    G.DB().items[key]=metadata
+    D.AddItem(metadata,"Local WoW Forever client")
+    return true
+end
+function G.CollectOwnedItems()
+    D.Initialize()
+    G.ownedBagLinks={}
+    for _,slot in ipairs(G.slots) do
+        local link=G.Safe(GetInventoryItemLink("player",slot[1]))
+        if link then D.Observe(link,"Equipped") end
+    end
+    if C_Container and C_Container.GetContainerNumSlots and C_Container.GetContainerItemLink then
+        for bag=0,NUM_BAG_SLOTS or 4 do
+            for slot=1,C_Container.GetContainerNumSlots(bag) do
+                local link=G.Safe(C_Container.GetContainerItemLink(bag,slot))
+                if link then
+                    G.ownedBagLinks[G.ItemKey(link)]=true
+                    D.Observe(link,"Bags")
+                end
+            end
+        end
+    end
+end
+function G.StartItemObservation()
+    if D.tooltipObserver or not TooltipDataProcessor or not TooltipDataProcessor.AddTooltipPostCall
+        or not Enum or not Enum.TooltipDataType or not Enum.TooltipDataType.Item then return end
+    D.tooltipObserver=true
+    local seen={}
+    TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Item,function(tooltip)
+        if tooltip~=GameTooltip and tooltip~=ItemRefTooltip and tooltip~=G.equippedTooltip then return end
+        if not tooltip.GetItem then return end
+        local ok,_,link=pcall(tooltip.GetItem,tooltip)
+        link=G.Safe(link)
+        if not ok or type(link)~="string" then return end
+        local key=G.ItemKey(link)
+        if seen[key] and time()-seen[key]<30 then return end
+        seen[key]=time()
+        if D.Observe(link,"Inspected tooltip") and G.QueueRefresh then G.QueueRefresh() end
+    end)
 end
 local oldRecord = G.Record
 function G.Record(record)
@@ -166,12 +258,14 @@ function G.RegisterDatabase(bundle)
         return false,"Invalid database provenance"
     end
     for _,record in ipairs(bundle.items or {}) do
-        if record.foreverVerified ~= true or record.estimated or type(record.sources) ~= "table" then
+        if record.foreverVerified ~= true or record.estimated or record.conflict
+            or type(record.stats) ~= "table" or record.sources~=nil and type(record.sources)~="table" then
             return false,"Unverified item in database"
         end
     end
     for _,item in ipairs(bundle.items or {}) do
-        for _,source in ipairs(item.sources) do
+        D.AddItem(item,bundle.name)
+        for _,source in ipairs(item.sources or {}) do
             if source.foreverVerified == true and source.url then
                 local record = {}
                 for key,value in pairs(source) do record[key] = value end

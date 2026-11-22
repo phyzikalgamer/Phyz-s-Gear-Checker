@@ -62,7 +62,7 @@ local function SourceLines(source)
     end
     if source.kind == "Vendor" then lines[#lines+1]="Recorded stock and price; recheck vendor requirements." end
     if source.verified then lines[#lines+1]="Data checked: " .. source.verified end
-    if source.provider then lines[#lines+1]="Data: " .. source.provider .. " · build " .. tostring(source.dataBuild) end
+    if source.provider then lines[#lines+1]="Item data: " .. source.provider .. (source.dataBuild and (" · " .. source.dataBuild) or "") end
     if source.url then lines[#lines+1]="Source: " .. source.url end
     return table.concat(lines,"\n")
 end
@@ -192,6 +192,14 @@ function O.Render(resetScroll)
     O.sourceButton:SetText((O.filter=="All" and "All sources" or O.filter) .. "  v")
     O.modeButton:SetText(O.mode .. "  v")
     O.futureButton:SetText(O.future and "Future: on" or "Future: off")
+    O.sourceButton:SetShown(not O.settingsOnly)
+    O.modeButton:SetShown(not O.settingsOnly)
+    O.futureButton:SetShown(not O.settingsOnly)
+    O.resultLabel:ClearAllPoints()
+    O.resultLabel:SetPoint("TOPLEFT",16,O.settingsOnly and -92 or -145)
+    panel.scroll:ClearAllPoints()
+    panel.scroll:SetPoint("TOPLEFT",16,O.settingsOnly and -116 or -171)
+    panel.scroll:SetPoint("BOTTOMRIGHT",-32,82)
     for mode,button in pairs(O.presetButtons) do
         if active==mode or mode~="Custom" and not guide then button:Disable() else button:Enable() end
     end
@@ -202,6 +210,24 @@ function O.Render(resetScroll)
     O.more:Hide()
     local item=gear.item
     local state,reason=G.Advisor.Assess(gear)
+    if O.settingsOnly then
+        panel.title:SetText("Gear Review options")
+        O.resultLabel:SetText("Scoring settings")
+        O.backButton:Hide()
+        local guide=G.Presets.Selected()
+        local lines={"|cffffd100" .. result.build .. "|r",
+            "Choose your intended spec and a preset above.","",
+            "Recommended balances useful stats with some survivability.",
+            "Attack focuses on damage. Survivability focuses on Stamina and Armor.",
+            "Custom uses your own saved weights.","",
+            "Use Edit weights to adjust a Custom profile. Preset coefficients remain separate."}
+        if guide then lines[#lines+1]="\nGuide: Wowhead Forever · checked " .. guide.checked end
+        lines[#lines+1]="\nSelect a gear card after closing this pane to inspect its upgrades."
+        panel.body:SetText(table.concat(lines,"\n"))
+        panel.content:SetHeight(math.max(400,panel.body:GetStringHeight()+20))
+        if resetScroll then panel.scroll:SetVerticalScroll(0) end
+        return
+    end
     local icon=item and item.icon and ("|T" .. item.icon .. ":24|t ") or ""
     local lines={"|cffffd100Equipped|r  " .. icon .. (item and (item.name or item.link) or (gear.link and "Item loading" or "Empty " .. gear.label)),
         item and (("iLvl %s · Requires %s · %s"):format(item.level or "?",item.required or "?",state)) or state}
@@ -226,6 +252,7 @@ function O.Render(resetScroll)
         lines[#lines+1]=#row.comparison.replaced>1 and "Comparison replaces main hand AND off hand." or "Comparison replaces the selected slot."
         lines[#lines+1]=row.future>0 and ("Future item: " .. row.future .. " more levels needed") or "Client confirms usable now; inspect restrictions before buying."
         lines[#lines+1]=row.access
+        if row.comparison.cautions and #row.comparison.cautions>0 then lines[#lines+1]=row.comparison.cautions[1] end
         lines[#lines+1]="\n|cffffd100How to get it|r"
         for _,source in ipairs(row.sources) do lines[#lines+1]="\n" .. SourceLines(source) end
         if result.profile.guide then lines[#lines+1]="\n" .. result.profile.guide.note end
@@ -300,7 +327,15 @@ function O.Render(resetScroll)
     if resetScroll then panel.scroll:SetVerticalScroll(0) end
 end
 function O.Open(slot)
+    O.settingsOnly=false
     O.slot,O.inspected,O.expanded,O.limit=slot,nil,false,20
+    O.panel:Show()
+    O.Render(true)
+end
+function O.OpenSettings()
+    O.slot=O.slot or 5
+    O.inspected=nil
+    O.settingsOnly=true
     O.panel:Show()
     O.Render(true)
 end

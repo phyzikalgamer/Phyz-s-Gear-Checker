@@ -91,6 +91,7 @@ local function AuctionHint(item)
     return source
 end
 local function Accessibility(source)
+    if source.owned then return 0,"Already in your bags" end
     if source.kind == "Crafted" and source.canCraft == true and G.sessionCrafts
         and G.sessionCrafts[source.recipeID] then return 1,"Recipe ready when observed this session; recheck materials" end
     if source.kind == "Vendor" and G.sessionVendors and G.sessionVendors[source.source .. "|" .. (source.location or "")] and source.price
@@ -104,76 +105,107 @@ local function Accessibility(source)
     return 9,"Accessibility unknown; check source requirements"
 end
 function A.Find(slot,filter,mode,future)
-    filter,mode = filter or "All",mode or "Best Upgrade"
+    filter,mode=filter or "All",mode or "Best Upgrade"
     G.Data.Initialize()
-    local key = table.concat({slot,filter,mode,future and "future" or "now",G.Data.revision},"|")
+    local key=table.concat({slot,filter,mode,future and "future" or "now",G.Data.revision},"|")
     if A.cache[key] then return A.cache[key] end
-    local profile,build = G.Profile(slot)
-    local equipment,context = Equipment(),Context()
-    local result = {rows={},skipped={},context=context,equipment=equipment,build=build,
-        profile=profile,considered=0}
-    A.cache[key] = result
-    if slot == 4 or slot == 19 then result.reason="Cosmetic slot"; return result end
-    if not next(profile.weights or {}) then result.reason="Set stat weights for your intended build to rank upgrades."; return result end
-    local current = equipment[slot]
-    if current.link and (not current.item or not current.item.statsKnown) then
-        result.reason="Equipped item statistics are unavailable or still loading."; return result
-    end
-    local function Skip(reason) result.skipped[reason]=(result.skipped[reason] or 0)+1 end
+    local profile,build=G.Profile(slot)
+    local equipment,context=Equipment(),Context()
+    local stats={totalDatabase=G.Data.entryCount,slotCandidates=0,level=0,class=0,restrictions=0,
+        unavailableData=0,unverified=0,unsupported=0,notUpgrade=0,acquisitionFilter=0,sourceUnknown=0,final=0}
+    local result={rows={},skipped={},context=context,equipment=equipment,build=build,profile=profile,
+        considered=0,diagnostics=stats,code=""}
+    A.cache[key]=result
+    local function Empty(code,text) result.code=code; result.reason=text; return result end
+    if not equipment[slot] then return Empty("INVALID_SLOT","Select a valid equipment slot.") end
+    if slot==4 or slot==19 then return Empty("OPTIONAL","Cosmetic slot; no combat upgrade assessment.") end
+    local selected={}
     for _,loc in ipairs(locations[slot] or {}) do
-        for _,entry in pairs(G.Data.byLoc[loc] or {}) do
-            if G.ItemKey(current.link) ~= entry.key then
-                local item = G.Data.Item(entry.link)
-                local sources = {}
-                for _,source in pairs(entry.sources) do
-                    if SourceAllowed(source,context,future) and (filter == "All" or category[source.kind] == filter) then
-                        sources[#sources+1] = source
-                    end
+        for entryKey,entry in pairs(G.Data.byLoc[loc] or {}) do selected[entryKey]=entry; stats.slotCandidates=stats.slotCandidates+1 end
+    end
+    stats.slotMismatch=math.max(0,G.Data.indexedCount-stats.slotCandidates)
+    if not next(profile.weights or {}) then return Empty("NO_SCORING","Choose a spec/preset or configure Custom weights to compare items.") end
+    if G.Data.entryCount==0 then
+        return Empty(G.Data.database and "DATABASE_EMPTY" or "DATABASE_NOT_LOADED",
+            G.Data.database and "The offline catalogue is loaded but contains no equipment records."
+                or "No equipment records loaded. Open bags or visit vendors to collect client-verified items; no offline catalogue is bundled.")
+    end
+    if stats.slotCandidates==0 then return Empty("NO_SLOT_RECORDS","No equipment records are indexed for this slot yet.") end
+    local current=equipment[slot]
+    if current.link and (not current.item or not current.item.statsKnown) then
+        return Empty("CURRENT_DATA_UNAVAILABLE","Equipped item statistics are unavailable or still loading.")
+    end
+    local function Skip(reason,group)
+        result.skipped[reason]=(result.skipped[reason] or 0)+1
+        stats[group or "restrictions"]=stats[group or "restrictions"]+1
+    end
+    for entryKey,entry in pairs(selected) do
+        if G.ItemKey(current.link)~=entryKey then
+            result.considered=result.considered+1
+            local item=G.Data.Item(entry.link)
+            local why
+            if entry.conflict then why="Conflicting offline item records"; Skip(why,"unverified")
+            elseif not item or not item.statsKnown then why="Candidate stats unavailable or still loading"; Skip(why,"unavailableData")
+            elseif not item.verified then why="Item statistics are unverified"; Skip(why,"unverified")
+            else
+                why=Restriction(item,slot,equipment,context,future)
+                if why then
+                    local group=(why=="Future level" or why=="Future proficiency requirements unknown") and "level"
+                        or (why=="Class restriction" or why=="Client has not confirmed item usability" or why=="Dual-wield capability not confirmed") and "class" or "restrictions"
+                    Skip(why,group)
                 end
-                if (filter == "All" or filter == "Auction House") and item then
-                    local hasAuction=false
-                    for _,source in ipairs(sources) do if source.kind=="Auction" then hasAuction=true end end
-                    if not hasAuction then
-                        local hint=AuctionHint(item)
-                        if hint then sources[#sources+1]=hint end
+            end
+            if not why then
+                local comparison,reason=G.Scoring.Compare(slot,item,equipment,profile.weights)
+                if not comparison then Skip(reason,"unsupported")
+                elseif comparison.delta<=0 then Skip("No positive weighted stat difference","notUpgrade")
+                else
+                    local sources={}
+                    for _,source in pairs(entry.sources) do
+                        if SourceAllowed(source,context,future) and (filter=="All" or category[source.kind]==filter) then sources[#sources+1]=source end
                     end
-                end
-                if #sources > 0 then
-                    result.considered = result.considered+1
-                    local why
-                    if entry.conflict then why="Conflicting offline item records"
-                    elseif item then why=Restriction(item,slot,equipment,context,future)
-                    else why="Candidate data loading" end
-                    if why then Skip(why) else
-                        local comparison,reason = G.Scoring.Compare(slot,item,equipment,profile.weights)
-                        if not comparison then Skip(reason)
-                        elseif comparison.delta <= 0 then Skip("No positive weighted stat difference")
-                        else
-                            table.sort(sources,function(a,b)
-                                local ea,eb = Accessibility(a),Accessibility(b)
-                                if ea ~= eb then return ea<eb end
-                                return (a.source or "") < (b.source or "")
-                            end)
-                            local ease,access = Accessibility(sources[1])
-                            result.rows[#result.rows+1] = {item=item,sources=sources,source=sources[1],
-                                comparison=comparison,ease=ease,access=access,
-                                future=math.max(0,item.required-context.level)}
-                        end
+                    if filter=="All" or filter=="Auction House" then
+                        local hasAuction=false
+                        for _,source in ipairs(sources) do if source.kind=="Auction" then hasAuction=true end end
+                        if not hasAuction then local hint=AuctionHint(item); if hint then sources[#sources+1]=hint end end
+                    end
+                    if filter=="All" and (G.ownedBagLinks and G.ownedBagLinks[entryKey]) then
+                        sources[#sources+1]={kind="Owned",source="Already in your bags",owned=true,clientVerified=true}
+                    end
+                    if #sources==0 and filter=="All" then
+                        sources[1]={kind="Unknown",source="Acquisition source unknown",url=entry.metadata and entry.metadata.url,
+                            provider=entry.provider or (item.clientStatsKnown and "Current WoW Forever client" or nil),
+                            dataBuild=entry.metadata and entry.metadata.build,clientVerified=item.clientStatsKnown or nil}
+                        stats.sourceUnknown=stats.sourceUnknown+1
+                    end
+                    if #sources==0 then Skip("Upgrade excluded by acquisition filter","acquisitionFilter")
+                    else
+                        table.sort(sources,function(a,b)
+                            local ea,eb=Accessibility(a),Accessibility(b)
+                            if ea~=eb then return ea<eb end
+                            return (a.source or "")<(b.source or "")
+                        end)
+                        local ease,access=Accessibility(sources[1])
+                        result.rows[#result.rows+1]={item=item,sources=sources,source=sources[1],comparison=comparison,
+                            ease=ease,access=access,future=math.max(0,item.required-context.level)}
                     end
                 end
             end
         end
     end
     table.sort(result.rows,function(a,b)
-        if mode == "Easiest Upgrade" and a.ease ~= b.ease then return a.ease<b.ease end
-        if a.comparison.delta ~= b.comparison.delta then return a.comparison.delta>b.comparison.delta end
-        return (a.item.name or "") < (b.item.name or "")
+        if mode=="Easiest Upgrade" and a.ease~=b.ease then return a.ease<b.ease end
+        if a.comparison.delta~=b.comparison.delta then return a.comparison.delta>b.comparison.delta end
+        return (a.item.name or "")<(b.item.name or "")
     end)
-    if #result.rows == 0 then
-        result.reason = result.considered == 0 and "No verified source records for this slot/filter. Database coverage is incomplete."
-            or "No comparable improvements in the available data. This does not mean best-in-slot."
-    end
-    return result
+    stats.final=#result.rows
+    if #result.rows>0 then result.code=stats.sourceUnknown>0 and "UPGRADES_WITH_UNKNOWN_SOURCES" or "UPGRADES"; return result end
+    if result.considered==0 then return Empty("NO_ALTERNATIVE_RECORDS","Only the equipped item is recorded for this slot. Inspect alternatives or collect bag/vendor items.") end
+    if stats.acquisitionFilter>0 then return Empty("ACQUISITION_FILTERED","Stat upgrades were found, but none match this acquisition filter. Try All sources.") end
+    if stats.notUpgrade>0 then return Empty("NO_BETTER_ITEMS","No better items found among the comparable records. This is not a best-in-slot claim.") end
+    if stats.unavailableData+stats.unverified>0 then return Empty("ITEM_DATA_UNAVAILABLE","Candidate item data is unavailable, loading, unverified or conflicting.") end
+    if stats.unsupported>0 then return Empty("UNSUPPORTED_COMPARISON","Available items require an unsupported effect or weapon-setup comparison.") end
+    return Empty("NO_COMPATIBLE_ITEMS","No compatible replacement items match your level, class and equipment restrictions.")
 end
 function A.Assess(gear)
     if gear.state == "Optional" or gear.state == "Loading" then return gear.state,gear.reason end

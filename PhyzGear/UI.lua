@@ -4,6 +4,19 @@ local WINDOW_WIDTH, CARD_WIDTH = 1050, 272
 local RIGHT_X = WINDOW_WIDTH - 16 - CARD_WIDTH
 local CENTER_X = 16 + CARD_WIDTH + 4
 local CENTER_WIDTH = RIGHT_X - CENTER_X - 4
+function G.ShowEquippedTooltip(owner,slot)
+    -- A dedicated tooltip has no shopping-comparison pair. Keep the global
+    -- replacement-item tooltip and the player's comparison preference untouched.
+    if not G.equippedTooltip then
+        G.equippedTooltip=CreateFrame("GameTooltip","PhyzGearEquippedTooltip",UIParent,"GameTooltipTemplate")
+        G.equippedTooltip:SetScript("OnUpdate",nil)
+    end
+    GameTooltip:Hide()
+    local tooltip=G.equippedTooltip
+    tooltip:SetOwner(owner,"ANCHOR_RIGHT")
+    tooltip:SetInventoryItem("player",slot)
+    tooltip:Show()
+end
 local function RaceBackground(parent)
     local scenery = CreateFrame("Frame",nil,parent)
     scenery:SetFrameLevel(parent:GetFrameLevel()+1)
@@ -62,14 +75,16 @@ local function RaceBackground(parent)
         scenery.creationScene = scene
     end
     -- Darken the summary strip without covering the frame's title or edges.
-    local strip = CreateFrame("Frame",nil,scenery)
+    local strip = CreateFrame("Frame",nil,scenery,"BackdropTemplate")
     strip:SetFrameLevel(parent:GetFrameLevel()+3)
     strip:SetPoint("TOPLEFT")
     strip:SetPoint("TOPRIGHT")
     strip:SetHeight(32)
-    local shade = strip:CreateTexture(nil,"BACKGROUND")
-    shade:SetAllPoints()
-    shade:SetColorTexture(0,0,0,0.8)
+    strip:SetBackdrop({bgFile="Interface\\FrameGeneral\\UI-Background-Rock",
+        edgeFile="Interface\\Tooltips\\UI-Tooltip-Border",tile=true,tileSize=16,edgeSize=12,
+        insets={left=3,right=3,top=3,bottom=3}})
+    strip:SetBackdropColor(0.12,0.10,0.075,0.95)
+    strip:SetBackdropBorderColor(0.55,0.45,0.25,1)
     return scenery
 end
 local function Text(parent, font, x, y, width)
@@ -113,11 +128,9 @@ local function Card(parent, slot, x, y, width)
     card.status = Text(card,"GameFontDisableSmall",8,-54,width-16)
     card:SetScript("OnClick",function() Details(slot[1]); G.Refresh() end)
     card:SetScript("OnEnter", function(self)
-        GameTooltip:SetOwner(self,"ANCHOR_RIGHT")
-        GameTooltip:SetInventoryItem("player",slot[1])
-        GameTooltip:Show()
+        G.ShowEquippedTooltip(self,slot[1])
     end)
-    card:SetScript("OnLeave",function() GameTooltip:Hide() end)
+    card:SetScript("OnLeave",function() if G.equippedTooltip then G.equippedTooltip:Hide() end end)
     cards[slot[1]] = card
 end
 local function Build()
@@ -139,7 +152,32 @@ local function Build()
     local summaryFrame = CreateFrame("Frame",nil,window)
     summaryFrame:SetAllPoints(window)
     summaryFrame:SetFrameLevel(window:GetFrameLevel()+5)
-    window.summary = Text(summaryFrame,"GameFontHighlight",18,-36,WINDOW_WIDTH-36)
+    window.playerName = Text(summaryFrame,"GameFontNormal",20,-31,WINDOW_WIDTH-430)
+    window.playerName:SetWordWrap(false)
+    window.playerLevel = Text(summaryFrame,"GameFontHighlightSmall",20,-45,WINDOW_WIDTH-430)
+    window.summary = Text(summaryFrame,"GameFontHighlightSmall",0,0,350)
+    window.summary:ClearAllPoints()
+    window.summary:SetPoint("RIGHT",summaryFrame,"TOPRIGHT",-52,-42)
+    window.summary:SetJustifyH("RIGHT")
+    window.summary:SetTextColor(0.8,0.76,0.65)
+    local options=CreateFrame("Button",nil,summaryFrame)
+    options:SetPoint("TOPRIGHT",-21,-32)
+    options:SetSize(20,20)
+    local cog=options:CreateTexture(nil,"ARTWORK")
+    cog:SetAllPoints()
+    cog:SetTexture("Interface\\Buttons\\UI-OptionsButton")
+    cog:SetVertexColor(1,0.82,0.45)
+    options:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square","ADD")
+    options:SetScript("OnClick",function() if G.Options and G.Options.OpenSettings then G.Options.OpenSettings() end end)
+    options:SetScript("OnEnter",function(self)
+        GameTooltip:SetOwner(self,"ANCHOR_LEFT")
+        GameTooltip:AddLine("Gear Review options")
+        GameTooltip:AddLine("Choose your spec, preset or custom weights.",1,1,1,true)
+        GameTooltip:Show()
+    end)
+    options:SetScript("OnLeave",function() GameTooltip:Hide() end)
+    window.optionsButton=options
+    G.headerOptionsButton=options
     cards = {}
     for i,slot in ipairs(G.slots) do
         if i <= 8 then Card(window,slot,16,-66-(i-1)*73,CARD_WIDTH)
@@ -168,6 +206,20 @@ local function Build()
     hint:SetJustifyH("CENTER")
     hint:SetTextColor(1,0.82,0)
     hint:SetText("Drag to rotate · Select a slot for options")
+    window.learning=CreateFrame("Button",nil,summaryFrame)
+    window.learning:SetSize(CENTER_WIDTH,18)
+    window.learning:SetPoint("TOPLEFT",CENTER_X,-734)
+    window.learning.text=Text(window.learning,"GameFontNormalSmall",0,0,CENTER_WIDTH)
+    window.learning.text:SetJustifyH("CENTER")
+    window.learning:SetScript("OnClick",function() G.Learner.TogglePause(); G.Refresh() end)
+    window.learning:SetScript("OnEnter",function(self)
+        GameTooltip:SetOwner(self,"ANCHOR_TOP")
+        GameTooltip:AddLine("Client gear catalogue")
+        GameTooltip:AddLine("Click to pause or resume. Learns while this window is open, outside combat. Progress is saved.",1,1,1,true)
+        GameTooltip:AddLine("Stats: your WoW Forever client. Locations are recorded separately. Index progress is not coverage completeness.",1,1,1,true)
+        GameTooltip:Show()
+    end)
+    window.learning:SetScript("OnLeave",function() GameTooltip:Hide() end)
     detail = CreateFrame("Frame",nil,window,"BasicFrameTemplateWithInset")
     detail:EnableMouse(true)
     detail:SetSize(440,680)
@@ -213,7 +265,11 @@ local function Build()
     G.Options.Init(detail)
     detail:Hide()
     detail:HookScript("OnHide",function() selected=nil; G.Refresh() end)
-    window:SetScript("OnShow",function() model:SetUnit("player"); G.Refresh() end)
+    window:SetScript("OnShow",function() model:SetUnit("player"); G.Learner.SetActive(true); G.Refresh() end)
+    window:SetScript("OnHide",function()
+        G.Learner.SetActive(false)
+        if G.equippedTooltip then G.equippedTooltip:Hide() end
+    end)
     window:Hide()
 end
 function G.Refresh()
@@ -237,8 +293,22 @@ function G.Refresh()
         card.status:SetTextColor(flag and 1 or 0.65,flag and 0.55 or 0.65,flag and 0.15 or 0.65)
         card.bg:SetBackdropBorderColor(selected == id and 1 or 0.45,selected == id and 0.82 or 0.45,0.3)
     end
-    window.summary:SetText(("%s · Level %s     |     %d potential upgrades · %d age/empty reviews · %d unrated"):format(
-        UnitName("player") or "Player",G.Safe(UnitLevel("player")) or "?",upgrades,review,unrated))
+    local fullName=UnitPVPName and UnitPVPName("player") or UnitName("player") or "Player"
+    local realm=GetRealmName()
+    window.playerName:SetText(fullName .. (realm and realm~="" and (" — " .. realm) or ""))
+    window.playerName:SetFontObject(GameFontNormal)
+    local font,size,flags=window.playerName:GetFont()
+    if type(font)=="string" and type(size)=="number" then
+        local textWidth=window.playerName:GetStringWidth()
+        if textWidth>window.playerName:GetWidth() then
+            window.playerName:SetFont(font,math.max(8,size*window.playerName:GetWidth()/textWidth),flags)
+        end
+    end
+    local class=UnitClass("player") or ""
+    window.playerLevel:SetText(("Level %s %s"):format(G.Safe(UnitLevel("player")) or "?",class))
+    window.summary:SetText(("%d upgrades · %d to review · %d unrated"):format(upgrades,review,unrated))
+    window.optionsButton:SetShown(G.Options and type(G.Options.OpenSettings)=="function")
+    window.learning.text:SetText(G.Learner.Status())
     if detail and detail:IsShown() then G.Options.Render(false) end
 end
 local refreshQueued=false
@@ -249,6 +319,10 @@ function G.QueueRefresh()
 end
 function G.Toggle()
     if not window then Build() end
+    if not window:IsShown() and G.CollectOwnedItems then
+        G.CollectOwnedItems()
+        G.InvalidateAdvisor("OWNED_ITEMS")
+    end
     window:SetShown(not window:IsShown())
 end
 

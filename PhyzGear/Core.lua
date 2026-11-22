@@ -169,10 +169,17 @@ events:SetScript("OnEvent", function(_, event, ...)
         if ... == "PhyzGear" then G.DB() end
         return
     end
+    -- Catalogue batches refresh the window every two seconds, not for each reply.
+    if event=="GET_ITEM_INFO_RECEIVED" and G.Learner and G.Learner.pending[(...)] then return end
     if event == "MERCHANT_SHOW" or event == "MERCHANT_UPDATE" then Merchant() end
     if event == "TRADE_SKILL_LIST_UPDATE" or event == "TRADE_SKILL_SHOW" then Crafts() end
     if event == "ITEM_SEARCH_RESULTS_UPDATED" then Auctions(...) end
     if event == "PLAYER_LOGIN" and G.CreateMinimap then G.CreateMinimap() end
+    if event == "PLAYER_LOGIN" and G.StartItemObservation then G.StartItemObservation() end
+    if G.CollectOwnedItems and (event=="PLAYER_LOGIN" or event=="PLAYER_ENTERING_WORLD"
+        or event=="PLAYER_EQUIPMENT_CHANGED" or event=="BAG_UPDATE_DELAYED") then
+        G.CollectOwnedItems()
+    end
     if G.InvalidateAdvisor then G.InvalidateAdvisor(event, ...) end
     if G.QueueRefresh then G.QueueRefresh() elseif G.Refresh then G.Refresh() end
 end)
