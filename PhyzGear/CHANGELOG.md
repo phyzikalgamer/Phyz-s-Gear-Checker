@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.3 preview
+
+- Continue catalogue scanning with the overview closed, with automatic combat pauses.
+- Resume previously started scans after login; manual pause and progress persist.
+- Move the dismissible scan notice outside the overview and add a Pause scan button. Dismissing does not pause.
+- 65 mocked runtime/import tests pass; background learning remains to be verified in-game.
+
 ## 0.3.2 preview
 
 - Retain complete item-stat snapshots during catalogue item-load replies instead of clearing every item's cache.

@@ -4,7 +4,7 @@ import shutil
 import zipfile
 
 ROOT = Path(__file__).resolve().parents[2]
-VERSION = '0.3.2'
+VERSION = '0.3.3'
 repo = ROOT / 'tools/releases/gear-checker-repo'
 shutil.copytree(ROOT / 'PhyzGear', repo / 'PhyzGear', dirs_exist_ok=True)
 destination = repo / 'tools/gear'
@@ -24,15 +24,15 @@ Choose your spec and Recommended, Attack or Survivability, or edit Custom weight
 
 See [usage and limitations](PhyzGear/README.md), [changes](PhyzGear/CHANGELOG.md), and [coverage investigation](PhyzGear/COVERAGE.md). Preview: mocked tests and static checks passed; current item learning needs in-game validation.
 ''', encoding='utf-8')
-notes = '''Stabilise upgrade ratings during catalogue scanning.
+notes = '''Background catalogue scanning preview.
 
-- Item-load replies no longer clear every item's cached stats, preventing confirmed comparisons from disappearing during transient loads.
-- Repeat observations preserve complete client snapshots; genuine equipment/level/proficiency changes still recalculate.
-- Stable ordering for equal-score/name items and a guard against repeated docking layout calls.
+- Scanning continues after Gear Review closes and automatically pauses during combat.
+- Previously started scans resume after login; progress and manual pause are saved.
+- Standalone dismissible scan notice with a Pause scan button. Dismissing lets scanning continue.
 
 Updating from 0.3.x: /reload is sufficient. Catalogue learning and saved progress are retained.
 
-Validated: 63 Lua 5.1 mocked runtime/import tests, TOC, Forever API baseline and archive structure. Not tested in-game; live scanning still needs verification.
+Validated: 65 Lua 5.1 mocked runtime/import tests, TOC, Forever API baseline and archive structure. Not tested in-game; background scanning still needs verification.
 '''
 (ROOT / f'tools/releases/gear-release-notes-{VERSION}.md').write_text(notes, encoding='utf-8')
 archive = ROOT / f'tools/releases/PhyzGear-{VERSION}.zip'

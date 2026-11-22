@@ -9,7 +9,9 @@ local function State()
     local version,build=GetBuildInfo()
     local fingerprint=tostring(version)..":"..tostring(build)
     if not db.learning or db.learning.build~=fingerprint then
-        db.learning={build=fingerprint,cursor=1,queue={},failed={},learned=0,candidates=0}
+        local previous=db.learning or {}
+        db.learning={build=fingerprint,cursor=1,queue={},failed={},learned=0,candidates=0,
+            started=previous.started,paused=previous.paused}
         -- Recheck old observations on a new build; never replace with Classic stats.
         for key in pairs(db.items or {}) do
             local id=tonumber(key:match("item:(%d+)"))
@@ -23,12 +25,18 @@ function L.Status()
     local s=State()
     if not C_Item or not C_Item.DoesItemExistByID or not C_Item.GetItemInfoInstant
         or not C_Item.RequestLoadItemDataByID then return "Item learning unavailable on this client" end
-    local state=s.paused and "Paused" or not L.active and "Paused — open Gear Review"
+    local state=s.paused and "Paused" or not L.active and "Not started — open Gear Review"
         or InCombatLockdown and InCombatLockdown() and "Paused in combat"
         or s.cursor>L.limit and not next(s.queue) and "Scan complete" or "Learning"
     return ("%s · %d learned · %d queued · index %.0f%%"):format(state,s.learned,Count(s.queue),math.min(100,(s.cursor-1)/L.limit*100))
 end
-function L.SetActive(active) L.active=active end
+function L.SetActive(active)
+    L.active=active
+    if active then State().started=true end
+end
+function L.ResumeSaved()
+    if State().started then L.active=true end
+end
 function L.IsScanning()
     local s=State()
     return L.active and not s.paused and not (InCombatLockdown and InCombatLockdown())
@@ -103,7 +111,10 @@ local frame=CreateFrame("Frame")
 frame:SetScript("OnUpdate",function(_,elapsed)
     if not L.active then return end
     L.elapsed=L.elapsed+elapsed; L.refreshElapsed=L.refreshElapsed+elapsed
-    if L.elapsed>=0.2 then L.elapsed=0; L.Tick() end
+    if L.elapsed>=0.2 then
+        L.elapsed=0; L.Tick()
+        if G.UpdateScanNotice then G.UpdateScanNotice() end
+    end
     if L.refreshElapsed>=2 then
         L.refreshElapsed=0
         if G.QueueRefresh then G.QueueRefresh() end
@@ -120,12 +131,12 @@ function G.AdvisorCommand(message)
     if action==nil then return previous and previous(message) end
     local s=State()
     if action=="pause" then s.paused=true
-    elseif action=="resume" then s.paused=false
+    elseif action=="resume" then s.paused=false; L.SetActive(true)
     elseif action=="retry" then
         for id in pairs(s.failed) do s.queue[id]=true end
-        s.failed={}; s.paused=false
+        s.failed={}; s.paused=false; L.SetActive(true)
     elseif action~="" and action~="status" then
-        print("PhyzGear: /pgear scan [status|pause|resume|retry]. Open Gear Review to learn items.")
+        print("PhyzGear: /pgear scan [status|pause|resume|retry]. Scanning continues with Gear Review closed.")
         return true
     end
     print("PhyzGear: "..L.Status().." · "..Count(s.failed).." unavailable (retry supported)")

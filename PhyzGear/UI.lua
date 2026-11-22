@@ -94,6 +94,36 @@ local function Text(parent, font, x, y, width)
     text:SetJustifyH("LEFT")
     return text
 end
+function G.UpdateScanNotice()
+    local visible=G.Learner.IsScanning() and not G.Learner.noticeDismissed
+    if not G.scanNotice and not visible then return end
+    if not G.scanNotice then
+        local notice=CreateFrame("Frame",nil,UIParent,"BackdropTemplate")
+        notice:SetPoint("BOTTOMRIGHT",UIParent,"BOTTOMRIGHT",-24,160)
+        notice:SetSize(300,100)
+        notice:SetFrameStrata("DIALOG")
+        notice:SetClampedToScreen(true)
+        notice:EnableMouse(true)
+        notice:SetBackdrop({bgFile="Interface\\DialogFrame\\UI-DialogBox-Background",
+            edgeFile="Interface\\Tooltips\\UI-Tooltip-Border",tile=true,tileSize=16,edgeSize=12,
+            insets={left=3,right=3,top=3,bottom=3}})
+        notice:SetBackdropColor(0.08,0.07,0.04,0.95)
+        notice:SetBackdropBorderColor(0.65,0.52,0.27,1)
+        Text(notice,"GameFontNormalSmall",10,-9,260):SetText("Scanning gear catalogue…")
+        Text(notice,"GameFontHighlightSmall",10,-28,280):SetText("Scanning continues with Gear Review closed. Combat pauses it automatically.")
+        notice.pause=CreateFrame("Button",nil,notice,"UIPanelButtonTemplate")
+        notice.pause:SetPoint("BOTTOMLEFT",10,9)
+        notice.pause:SetSize(110,22)
+        notice.pause:SetText("Pause scan")
+        notice.pause:SetScript("OnClick",function() G.Learner.TogglePause(); G.Refresh() end)
+        notice.dismiss=CreateFrame("Button",nil,notice,"UIPanelCloseButton")
+        notice.dismiss:SetSize(22,22)
+        notice.dismiss:SetPoint("TOPRIGHT",0,0)
+        notice.dismiss:SetScript("OnClick",function() G.Learner.noticeDismissed=true; notice:Hide() end)
+        G.scanNotice=notice
+    end
+    G.scanNotice:SetShown(visible)
+end
 local function Panel(parent)
     local frame = CreateFrame("Frame", nil, parent, "BackdropTemplate")
     frame:SetBackdrop({bgFile="Interface\\DialogFrame\\UI-DialogBox-Background",
@@ -215,29 +245,11 @@ local function Build()
     window.learning:SetScript("OnEnter",function(self)
         GameTooltip:SetOwner(self,"ANCHOR_TOP")
         GameTooltip:AddLine("Client gear catalogue")
-        GameTooltip:AddLine("Click to pause or resume. Learns while this window is open, outside combat. Progress is saved.",1,1,1,true)
+        GameTooltip:AddLine("Click to pause or resume. Continues in the background, outside combat. Progress is saved.",1,1,1,true)
         GameTooltip:AddLine("Stats: your WoW Forever client. Locations are recorded separately. Index progress is not coverage completeness.",1,1,1,true)
         GameTooltip:Show()
     end)
     window.learning:SetScript("OnLeave",function() GameTooltip:Hide() end)
-    local notice=CreateFrame("Frame",nil,summaryFrame,"BackdropTemplate")
-    notice:SetPoint("BOTTOMLEFT",16,16)
-    notice:SetSize(CARD_WIDTH,72)
-    notice:EnableMouse(true)
-    notice:SetBackdrop({bgFile="Interface\\DialogFrame\\UI-DialogBox-Background",
-        edgeFile="Interface\\Tooltips\\UI-Tooltip-Border",tile=true,tileSize=16,edgeSize=12,
-        insets={left=3,right=3,top=3,bottom=3}})
-    notice:SetBackdropColor(0.08,0.07,0.04,0.95)
-    notice:SetBackdropBorderColor(0.65,0.52,0.27,1)
-    notice.title=Text(notice,"GameFontNormalSmall",10,-9,CARD_WIDTH-40)
-    notice.title:SetText("Scanning gear catalogue…")
-    notice.body=Text(notice,"GameFontHighlightSmall",10,-26,CARD_WIDTH-20)
-    notice.body:SetText("Keep this window open to learn upgrades. Dismissing this notice keeps scanning.")
-    local dismiss=CreateFrame("Button",nil,notice,"UIPanelCloseButton")
-    dismiss:SetSize(22,22)
-    dismiss:SetPoint("TOPRIGHT",0,0)
-    dismiss:SetScript("OnClick",function() G.Learner.noticeDismissed=true; notice:Hide() end)
-    window.scanNotice=notice
     detail = CreateFrame("Frame",nil,window,"BasicFrameTemplateWithInset")
     detail:EnableMouse(true)
     detail:SetSize(440,760)
@@ -295,12 +307,12 @@ local function Build()
     detail:HookScript("OnHide",function() selected=nil; LayoutDock(false); G.Refresh() end)
     window:SetScript("OnShow",function() model:SetUnit("player"); G.Learner.SetActive(true); G.Refresh() end)
     window:SetScript("OnHide",function()
-        G.Learner.SetActive(false)
         if G.equippedTooltip then G.equippedTooltip:Hide() end
     end)
     window:Hide()
 end
 function G.Refresh()
+    G.UpdateScanNotice()
     if not window or not window:IsShown() then return end
     local review,upgrades,unrated = 0,0,0
     for id,gear in pairs(G.Equipment()) do
@@ -337,7 +349,6 @@ function G.Refresh()
     window.summary:SetText(("%d upgrades · %d to review · %d unrated"):format(upgrades,review,unrated))
     window.optionsButton:SetShown(G.Options and type(G.Options.OpenSettings)=="function")
     window.learning.text:SetText(G.Learner.Status())
-    window.scanNotice:SetShown(G.Learner.IsScanning() and not G.Learner.noticeDismissed)
     if detail and detail:IsShown() then G.Options.Render(false) end
 end
 local refreshQueued=false

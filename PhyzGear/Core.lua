@@ -176,6 +176,7 @@ events:SetScript("OnEvent", function(_, event, ...)
     if event == "ITEM_SEARCH_RESULTS_UPDATED" then Auctions(...) end
     if event == "PLAYER_LOGIN" and G.CreateMinimap then G.CreateMinimap() end
     if event == "PLAYER_LOGIN" and G.StartItemObservation then G.StartItemObservation() end
+    if event == "PLAYER_LOGIN" and G.Learner then G.Learner.ResumeSaved() end
     if G.CollectOwnedItems and (event=="PLAYER_LOGIN" or event=="PLAYER_ENTERING_WORLD"
         or event=="PLAYER_EQUIPMENT_CHANGED" or event=="BAG_UPDATE_DELAYED") then
         G.CollectOwnedItems()

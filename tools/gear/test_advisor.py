@@ -233,6 +233,33 @@ class RuntimeTests(unittest.TestCase):
     def test_stats_override_item_level(self):
         self.run_lua('local r=G.Advisor.Find(5); assert(#r.rows==1); assert(r.rows[1].item.id==2); assert(r.rows[1].comparison.delta==5)')
 
+    def test_background_learning_continues_after_window_closes(self):
+        self.learner_fixture()
+        self.run_lua('''
+          fixture(8,"INVTYPE_CHEST",25)
+          G.Toggle(); G.Toggle()
+          assert(G.Learner.active and G.Learner.IsScanning())
+          G.UpdateScanNotice(); assert(G.scanNotice:IsShown())
+          for i=1,8 do G.Learner.Tick() end
+          assert(PhyzGearDB.items["item:8"])
+          G.UpdateScanNotice(); assert(not G.scanNotice:IsShown())
+        ''')
+
+    def test_background_notice_pause_dismiss_and_saved_resume(self):
+        self.learner_fixture()
+        self.run_lua('''
+          G.AdvisorCommand("scan resume"); G.UpdateScanNotice()
+          assert(G.scanNotice:IsShown())
+          G.scanNotice.pause:GetScript("OnClick")()
+          assert(not G.Learner.IsScanning() and not G.scanNotice:IsShown())
+          G.Learner.SetActive(false); G.Learner.ResumeSaved()
+          assert(G.Learner.active and not G.Learner.IsScanning())
+          G.AdvisorCommand("scan resume"); G.UpdateScanNotice()
+          G.scanNotice.dismiss:GetScript("OnClick")()
+          assert(G.Learner.IsScanning() and not G.scanNotice:IsShown())
+          G.UpdateScanNotice(); assert(not G.scanNotice:IsShown())
+        ''')
+
     def test_scan_replies_do_not_drop_confirmed_upgrade_snapshots(self):
         self.run_lua('''
           local before=G.Advisor.Find(5)

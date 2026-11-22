@@ -1,4 +1,4 @@
-# Phyz's Gear Review — 0.3.2 preview
+# Phyz's Gear Review — 0.3.3 preview
 
 Gear overview and conservative upgrade research for WoW Forever, Interface 16001. The installed client was checked as 1.60.1.71037.
 
@@ -43,13 +43,13 @@ The [coverage investigation](COVERAGE.md) explains the empty original pool and t
 
 ### Independent client catalogue
 
-A dismissible notice appears only while scanning is active. It disappears when paused or finished. Dismissing hides the notice for the current login session without stopping the scan; the progress control remains available.
+A standalone dismissible notice appears only while scanning is active, including with the overview closed. Its Pause scan button stops learning; dismissing only hides the notice for the current login session. Resume with /pgear scan resume or the overview progress control. The notice disappears during combat, when manually paused or when finished.
 
-While the overview is open, the addon incrementally checks IDs 1–400,000 against the installed client's item-existence and instant equipment metadata APIs. Only locally recognised weapons/armor with equipment slots are queued; shirt/tabard are excluded. Greens are included. This bounded scan is not a claim of complete Forever coverage. The index can contain hidden or unavailable items; successful item loading confirms client statistics, not obtainable loot.
+After first opening Gear Review, the addon incrementally checks IDs 1–400,000 against the installed client's item-existence and instant equipment metadata APIs. Only locally recognised weapons/armor with equipment slots are queued; shirt/tabard are excluded. Greens are included. This bounded scan is not a claim of complete Forever coverage. The index can contain hidden or unavailable items; successful item loading confirms client statistics, not obtainable loot.
 
-Full item requests are limited to two per 0.2-second tick (at most ten per second), with at most twenty outstanding. Cached records also enter the pool gradually. Requests time out after ten seconds and can be retried manually. Closing the window, clicking the progress text to pause, or entering combat stops new work. Progress, queued IDs, failures and learned snapshots persist account-wide on normal logout. A new client build restarts discovery and requeues prior observations. No other addon's code or item list is bundled.
+Full item requests are limited to two per 0.2-second tick (at most ten per second), with at most twenty outstanding. Cached records also enter the pool gradually. Requests time out after ten seconds and can be retried manually. Scanning continues with the window closed and resumes after login. Clicking Pause scan, clicking the progress text to pause, or entering combat stops new work. Progress, queued IDs, failures and learned snapshots persist account-wide on normal logout. A new client build restarts discovery and requeues prior observations. No other addon's code or item list is bundled.
 
-The small progress button beneath the character shows learned records, queued items and index position. **100% index** means the bounded range was checked, not that all gear exists or every source is known. `/pgear scan status`, `/pgear scan pause`, `/pgear scan resume` and `/pgear scan retry` provide controls; the window must remain open to learn. Stats are attributed to **Local WoW Forever client**; Wowhead remains a research link. Expect the initial learning pass to take time, with suggestions appearing progressively. Unavailable records never become scored upgrades solely because their IDs exist.
+The small progress button beneath the character shows learned records, queued items and index position. **100% index** means the bounded range was checked, not that all gear exists or every source is known. `/pgear scan status`, `/pgear scan pause`, `/pgear scan resume` and `/pgear scan retry` provide controls; learning continues in the background. Stats are attributed to **Local WoW Forever client**; Wowhead remains a research link. Expect the initial learning pass to take time, with suggestions appearing progressively. Unavailable records never become scored upgrades solely because their IDs exist.
 
 - Visited vendor stock is recorded with vendor, map location/coordinates, recorded stack price, extra-cost flag and observation time. Coordinates are the player's position at the vendor. Requirements not reported by the client remain unknown.
 - Profession windows record recipe outputs and profession. Craftability is only stated for a learned personal recipe with a positive API craftable count when observed. Skill requirements, materials and recipe unlocks require verified provider records; no recipes from other professions are invented.
@@ -74,3 +74,4 @@ Generated Lua registers immutable offline records at load; slot indexes avoid fu
 Run `python tools/gear/test_advisor.py` after installing Lupa in the local tools environment (or your Python environment). Tests use Lua 5.1 with mocked client APIs; fictional fixtures never ship in the addon. Tests cover filtering, scoring, weapons, rings, restrictions, source merging, stale prices, caching, async loading, importer validation and UI wiring. TOC validation and the kit's API-baseline scan are also required.
 
 This advisor implementation has not been tested in-game. Enable `/console scriptErrors 1`; exercise empty/loaded slots, build setup, all filters, item comparison/back, tooltip hover, future mode, vendor/recipe/AH collection, equipment changes, level changes and persistence. Check long text, small UI scales and BugSack. Previous screenshots establish that the overview and racial background work on the user's client, not that the new advisor does.
+
